@@ -166,6 +166,11 @@ export type EVCVisit = {
   location: string | null
   notes: string | null
   status: 'scheduled' | 'completed' | 'cancelled'
+  checklist: { key: string; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string | null }[] | null
+  outcome_summary: string | null
+  observations: string | null
+  report_status: 'not_started' | 'draft' | 'submitted'
+  report_submitted_at: string | null
   created_by_user_id: string | null
   created_at: string
   updated_at: string
@@ -238,6 +243,8 @@ export const api = {
     request<EVCVisit>('/evc/visits', { method: 'POST', body: JSON.stringify(payload) }),
   updateEVCVisitStatus: (id: string, status: 'completed' | 'cancelled') =>
     request<EVCVisit>(`/evc/visits/${encodeURIComponent(id)}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  saveEVCReport: (id: string, payload: { checklist: { key: string; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes?: string | null }[]; outcome_summary: string; observations?: string; submit: boolean }) =>
+    request<EVCVisit>(`/evc/visits/${encodeURIComponent(id)}/report`, { method: 'PUT', body: JSON.stringify(payload) }),
   transitionApplication: (id: string, targetStatus: string, expectedStatus: string, reason?: string) =>
     request<Application>(`/applications/${encodeURIComponent(id)}/transitions`, {
       method: 'POST',
