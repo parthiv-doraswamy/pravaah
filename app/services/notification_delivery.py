@@ -92,7 +92,16 @@ def process_due_notifications(
 
     sent = 0
     failed = 0
+    skipped_inactive = 0
     for notification, recipient in records:
+        if not recipient.is_active:
+            notification.delivery_status = "failed"
+            notification.last_error = "Recipient account is inactive; email delivery was not attempted."
+            notification.next_attempt_at = None
+            notification.updated_at = run_at
+            skipped_inactive += 1
+            continue
+
         attempt_number = notification.attempt_count + 1
         next_attempt: datetime | None = None
         try:
@@ -134,6 +143,7 @@ def process_due_notifications(
         "attempted": len(records),
         "sent": sent,
         "failed": failed,
+        "skipped_inactive_recipients": skipped_inactive,
         "deferred": 0,
         "detail": "Delivery attempt results were recorded.",
     }
