@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type EventVerification, type PolicyVersion, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type EventVerification, type PolicyVersion, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies'
 
@@ -34,6 +34,16 @@ function App() {
   const [applications, setApplications] = useState<Application[]>([])
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null)
   const [caseEvents, setCaseEvents] = useState<ApplicationEvent[]>([])
+  const [evidenceItems, setEvidenceItems] = useState<ApplicationEvidence[]>([])
+  const [loadingEvidence, setLoadingEvidence] = useState(false)
+  const [evidenceTitle, setEvidenceTitle] = useState('')
+  const [evidenceCategory, setEvidenceCategory] = useState('approval_letter')
+  const [evidenceReference, setEvidenceReference] = useState('')
+  const [evidenceIssued, setEvidenceIssued] = useState('')
+  const [evidenceExpires, setEvidenceExpires] = useState('')
+  const [evidencePolicy, setEvidencePolicy] = useState('')
+  const [evidenceNotes, setEvidenceNotes] = useState('')
+  const [savingEvidence, setSavingEvidence] = useState(false)
   const [eventVerification, setEventVerification] = useState<EventVerification | null>(null)
   const [loadingTimeline, setLoadingTimeline] = useState(false)
   const [transitionReason, setTransitionReason] = useState('')
@@ -98,12 +108,13 @@ function App() {
     if (!user || view !== 'detail' || !selectedApplication) return
     let cancelled = false
     setLoadingTimeline(true)
-    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id)])
-      .then(([events, verification]) => {
-        if (!cancelled) { setCaseEvents(events); setEventVerification(verification) }
+    setLoadingEvidence(true)
+    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id), api.evidence(selectedApplication.id)])
+      .then(([events, verification, evidence]) => {
+        if (!cancelled) { setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence) }
       })
-      .catch(error => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load the audit timeline.') })
-      .finally(() => { if (!cancelled) setLoadingTimeline(false) })
+      .catch(error => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load the application timeline and evidence.') })
+      .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false) } })
     return () => { cancelled = true }
   }, [user, view, selectedApplication])
 
@@ -166,6 +177,34 @@ function App() {
       setNotice(error instanceof Error ? error.message : 'Could not create the application.')
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function handleRegisterEvidence(event: FormEvent) {
+    event.preventDefault()
+    if (!selectedApplication || evidenceTitle.trim().length < 2) return
+    setSavingEvidence(true)
+    setNotice('')
+    try {
+      const payload = {
+        title: evidenceTitle.trim(), category: evidenceCategory,
+        ...(evidenceReference.trim() ? { reference_number: evidenceReference.trim() } : {}),
+        ...(evidenceIssued ? { issued_on: evidenceIssued } : {}),
+        ...(evidenceExpires ? { expires_on: evidenceExpires } : {}),
+        ...(evidencePolicy.trim() ? { policy_key: evidencePolicy.trim() } : {}),
+        ...(evidenceNotes.trim() ? { notes: evidenceNotes.trim() } : {}),
+      }
+      await api.registerEvidence(selectedApplication.id, payload)
+      const [evidence, events, verification] = await Promise.all([api.evidence(selectedApplication.id), api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id)])
+      setEvidenceItems(evidence)
+      setCaseEvents(events)
+      setEventVerification(verification)
+      setEvidenceTitle(''); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(''); setEvidenceNotes('')
+      setNotice('Evidence metadata registered and added to the audit timeline.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not register evidence metadata.')
+    } finally {
+      setSavingEvidence(false)
     }
   }
 
@@ -291,6 +330,31 @@ function App() {
               const targets = config && config.roles.includes(user.role) ? config.targets : []
               return <div className="detail-actions"><div><h3>Workflow actions</h3><p>Actions are limited by role and current status, and rechecked by the server.</p></div>{targets.length ? <><textarea value={transitionReason} onChange={event => setTransitionReason(event.target.value)} rows={2} maxLength={2000} placeholder="Optional note for the audit trail"/><div className="detail-action-buttons">{targets.map(target => <button key={target} className={target === 'rejected' || target === 'returned' ? 'secondary-button' : 'primary-button'} disabled={transitionBusy} onClick={() => void handleTransition(target)}>{transitionBusy ? 'Saving…' : target.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</button>)}</div></> : <p className="no-detail-actions">No action is available for your role in this status.</p>}</div>
             })()}
+            <div className="evidence-section">
+              <div className="panel-heading"><div><h2>Evidence & expiry tracking</h2><p>Register evidence metadata and connect it to a policy record. This does not upload or store document files.</p></div><span className="evidence-count">{evidenceItems.length} items</span></div>
+              <form className="evidence-form" onSubmit={handleRegisterEvidence}>
+                <div className="evidence-form-grid">
+                  <label>Evidence title<input value={evidenceTitle} onChange={event => setEvidenceTitle(event.target.value)} placeholder="e.g. Fire safety certificate" minLength={2} maxLength={240} required /></label>
+                  <label>Category<select value={evidenceCategory} onChange={event => setEvidenceCategory(event.target.value)}><option value="approval_letter">Approval letter</option><option value="accreditation">Accreditation</option><option value="fire_safety">Fire safety</option><option value="building_safety">Building safety</option><option value="faculty_records">Faculty records</option><option value="financial">Financial</option><option value="other">Other</option></select></label>
+                  <label>Reference number<input value={evidenceReference} onChange={event => setEvidenceReference(event.target.value)} placeholder="Optional document reference" maxLength={160}/></label>
+                  <label>Linked policy key<input value={evidencePolicy} onChange={event => setEvidencePolicy(event.target.value)} placeholder="e.g. EVIDENCE_EXPIRY" maxLength={100}/></label>
+                  <label>Issue date<input type="date" value={evidenceIssued} onChange={event => setEvidenceIssued(event.target.value)} max={evidenceExpires || undefined}/></label>
+                  <label>Expiry date<input type="date" value={evidenceExpires} onChange={event => setEvidenceExpires(event.target.value)} min={evidenceIssued || undefined}/></label>
+                </div>
+                <label className="evidence-notes-label">Notes<textarea value={evidenceNotes} onChange={event => setEvidenceNotes(event.target.value)} rows={2} maxLength={3000} placeholder="Optional context for reviewers"/></label>
+                <button className="primary-button" disabled={savingEvidence || evidenceTitle.trim().length < 2}>{savingEvidence ? 'Registering…' : 'Register evidence'}</button>
+              </form>
+              <div className="evidence-list">
+                {loadingEvidence ? <div className="table-state"><div className="loading-line"/><span>Loading evidence register…</span></div> : evidenceItems.length === 0 ? <div className="empty-state"><div className="empty-icon"><FileCheck2 size={20}/></div><strong>No evidence registered yet</strong><p>Add evidence metadata above to start the compliance register.</p></div> : evidenceItems.map(item => {
+                  const today = new Date().toISOString().slice(0, 10)
+                  const days = item.expires_on ? Math.ceil((new Date(item.expires_on + 'T00:00:00Z').getTime() - new Date(today + 'T00:00:00Z').getTime()) / 86400000) : null
+                  const expiryState = days === null ? 'No expiry date' : days < 0 ? 'Expired' : days <= 30 ? 'Expires soon' : 'Valid'
+                  return <article className="evidence-item" key={item.id}>
+                    <div className="evidence-file-icon"><FileCheck2 size={18}/></div><div className="evidence-item-main"><div className="evidence-item-heading"><strong>{item.title}</strong><span className={'evidence-expiry ' + (days !== null && days < 0 ? 'expired' : days !== null && days <= 30 ? 'expiring' : 'valid')}>{expiryState}</span></div><p>{item.category.replaceAll('_', ' ')}{item.reference_number ? ' · Ref ' + item.reference_number : ''}{item.policy_key ? ' · Policy ' + item.policy_key : ''}</p>{item.notes && <p className="evidence-notes">{item.notes}</p>}<span className="evidence-date">{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'Expiry not recorded'}{item.issued_on ? ' · Issued ' + formatDate(item.issued_on) : ''}</span></div>
+                  </article>
+                })}
+              </div>
+            </div>
             <div className="audit-summary"><ShieldCheck size={19}/><div><strong>{loadingTimeline ? 'Verifying audit history…' : eventVerification?.valid ? 'Audit chain verified' : eventVerification ? 'Audit chain check failed' : 'Audit verification unavailable'}</strong><p>{eventVerification ? eventVerification.event_count + ' events checked. ' + (eventVerification.valid ? 'No tampering detected in the stored chain.' : 'First invalid sequence: ' + eventVerification.first_invalid_sequence + '.') : 'The event chain is tamper-evident and is not an external trust anchor.'}</p></div></div>
             <div className="detail-timeline"><div className="panel-heading"><div><h2>Application timeline</h2><p>Chronological record of application events</p></div><span>{caseEvents.length} events</span></div>
               {loadingTimeline ? <div className="table-state"><div className="loading-line"/><span>Loading events…</span></div> : caseEvents.length === 0 ? <div className="empty-state"><strong>No timeline events</strong><p>Events appear here as the application progresses.</p></div> : <div className="event-list">{caseEvents.map(event => <div className="event-row" key={event.id}><div className="event-dot"/><div><strong>{event.event_type.replaceAll('_', ' ')}</strong><p>{event.from_status ? (statusLabels[event.from_status] || event.from_status.replaceAll('_', ' ')) + ' → ' + (statusLabels[event.to_status || ''] || (event.to_status || '').replaceAll('_', ' ')) : 'Initial record created'}{event.reason ? ' · ' + event.reason : ''}</p><span>{new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(event.occurred_at))}</span><details><summary>Event hash</summary><code>{event.event_hash}</code></details></div></div>)}</div>}
