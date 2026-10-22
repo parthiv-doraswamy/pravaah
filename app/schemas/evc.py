@@ -60,7 +60,7 @@ class EVCVisitResponse(BaseModel):
     location: str | None
     notes: str | None
     status: str
-    checklist: list[dict[str, str]] | None
+    checklist: list[dict[str, object]] | None
     outcome_summary: str | None
     observations: str | None
     report_status: str
