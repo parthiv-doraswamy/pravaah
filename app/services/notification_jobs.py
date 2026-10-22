@@ -106,6 +106,7 @@ def run_expiry_monitoring(db: Session, today: date | None = None) -> dict[str, i
                               "days_remaining": days, "notification_date": run_date.isoformat(),
                               "source": "scheduled_worker"},
                 )
+                db.flush()
                 audited.add(key)
         else:
             skipped += 1
@@ -139,6 +140,7 @@ def run_expiry_monitoring(db: Session, today: date | None = None) -> dict[str, i
                               "severity": "high", "days_expired": abs(days),
                               "threshold_days": ESCALATION_AFTER_DAYS, "source": "scheduled_worker"},
                 )
+                db.flush()
             escalation_notification_key = f"escalation:{escalation.id}:{recipient.id}"
             escalation_notification_inserted = _insert_if_absent(db, NotificationRecord, {
                 "id": uuid4(),
