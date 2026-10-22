@@ -112,3 +112,40 @@ def test_delivery_stops_after_configured_attempt_limit(api_client_and_sessions):
         attempt = db.query(NotificationAttempt).filter_by(notification_id=notification_id).one()
         assert attempt.outcome == "failed"
         assert attempt.next_attempt_at is None
+
+
+def test_delivery_skips_and_closes_notifications_for_inactive_recipients(api_client_and_sessions):
+    _, db_factory = api_client_and_sessions
+    notification_id = seed_notification(db_factory)
+    with db_factory() as db:
+        record = db.get(NotificationRecord, notification_id)
+        recipient = db.get(User, record.recipient_user_id)
+        recipient.is_active = False
+        db.commit()
+
+    transport_calls = {"count": 0}
+
+    def should_not_send(recipient, subject, body):
+        transport_calls["count"] += 1
+        raise AssertionError("inactive recipients must not receive email")
+
+    with db_factory() as db:
+        result = process_due_notifications(
+            db,
+            transport=should_not_send,
+            now=datetime(2026, 10, 22, 10, 0, tzinfo=UTC),
+            enabled=True,
+        )
+
+    assert result["attempted"] == 1
+    assert result["sent"] == 0
+    assert result["skipped_inactive_recipients"] == 1
+    assert transport_calls["count"] == 0
+    with db_factory() as db:
+        record = db.get(NotificationRecord, notification_id)
+        assert record.delivery_status == "failed"
+        assert record.attempt_count == 0
+        assert record.next_attempt_at is None
+        assert "account is inactive" in record.last_error
+        assert db.query(NotificationAttempt).filter_by(notification_id=notification_id).count() == 0
+
