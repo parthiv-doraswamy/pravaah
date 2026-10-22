@@ -37,7 +37,14 @@ def append_event(
     to_status: str | None, actor_user_id: UUID | None, reason: str | None = None,
     metadata: dict | None = None,
 ) -> ApplicationEvent:
-    """Append one chained event within the caller's transaction."""
+    """Append one chained event within the caller's transaction.
+
+    Lock the parent application before reading the chain head so concurrent writers
+    for the same application serialize on databases that support row-level locks.
+    """
+    db.scalar(
+        select(Application.id).where(Application.id == application_id).with_for_update()
+    )
     previous = db.scalar(
         select(ApplicationEvent).where(ApplicationEvent.application_id == application_id)
         .order_by(ApplicationEvent.sequence.desc()).limit(1)
@@ -60,6 +67,9 @@ def append_event(
         previous_hash=previous_hash, event_hash=canonical_event_hash(payload),
     )
     db.add(event)
+    # Flush before returning so a second append in the same transaction sees this
+    # event as the current chain head and receives the next sequence number.
+    db.flush()
     return event
 
 
