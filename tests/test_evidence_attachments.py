@@ -170,3 +170,63 @@ def test_upload_requires_write_role_and_download_is_application_scoped(api_clien
         files={"file": ("demo.pdf", content, "application/pdf")},
     )
     assert denied.status_code == 403
+
+
+
+def test_attachment_listing_and_download_require_matching_visible_application(api_client_and_sessions, tmp_path, monkeypatch):
+    from app.core.config import Settings
+    import app.api.v1.routes.evidence as evidence_routes
+
+    client, session_factory = api_client_and_sessions
+    owner_application = _setup(session_factory, "attachment-boundary-owner@example.test")
+    owner_headers = {
+        "Authorization": f"Bearer {_login(client, 'attachment-boundary-owner@example.test')}"
+    }
+    evidence_id = _create_evidence(client, owner_headers, owner_application)
+    monkeypatch.setattr(
+        evidence_routes,
+        "get_settings",
+        lambda: Settings(evidence_storage_dir=str(tmp_path), evidence_max_upload_bytes=1024),
+    )
+    content = b"%PDF-1.4\nprivate attachment\n%%EOF"
+    uploaded = client.post(
+        f"/api/v1/applications/{owner_application}/evidence/{evidence_id}/attachments",
+        headers=owner_headers,
+        files={"file": ("private.pdf", content, "application/pdf")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    attachment_id = uploaded.json()["id"]
+
+    other_application = _setup(session_factory, "attachment-boundary-other@example.test")
+    other_headers = {
+        "Authorization": f"Bearer {_login(client, 'attachment-boundary-other@example.test')}"
+    }
+
+    listing = client.get(
+        f"/api/v1/applications/{other_application}/evidence/{evidence_id}/attachments",
+        headers=other_headers,
+    )
+    assert listing.status_code == 404
+
+    download = client.get(
+        f"/api/v1/applications/{other_application}/evidence/{evidence_id}/attachments/{attachment_id}/download",
+        headers=other_headers,
+    )
+    assert download.status_code == 404
+
+    # Even a user who can see both applications cannot pair an attachment with
+    # an evidence record belonging to a different application.
+    reviewer_id = _setup(session_factory, "attachment-boundary-reviewer@example.test", role="auditor")
+    del reviewer_id
+    with session_factory() as db:
+        reviewer = db.query(User).filter_by(email="attachment-boundary-reviewer@example.test").one()
+        reviewer.role = "system_admin"
+        db.commit()
+    reviewer_headers = {
+        "Authorization": f"Bearer {_login(client, 'attachment-boundary-reviewer@example.test')}"
+    }
+    mismatched_pair = client.get(
+        f"/api/v1/applications/{other_application}/evidence/{evidence_id}/attachments/{attachment_id}/download",
+        headers=reviewer_headers,
+    )
+    assert mismatched_pair.status_code == 404
