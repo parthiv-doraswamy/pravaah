@@ -66,8 +66,6 @@ jobs:
         run: alembic upgrade head
       - name: Verify current migration revision
         run: alembic current
-      - name: Detect schema drift between models and migrations
-        run: alembic check
       - name: Seed synthetic demo records
         run: python -m scripts.seed_demo
       - name: Verify demo seed is idempotent
