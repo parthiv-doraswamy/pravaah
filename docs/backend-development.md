@@ -72,3 +72,10 @@ The `application_evidence` table stores evidence title, category, reference numb
 - Each registration appends an `evidence_registered` event to the application's hash chain so the record is included in audit verification.
 
 Expiry badges in the frontend are a display-level warning based on the recorded date; they are not a legal determination, a scheduled reminder, or a substitute for a verified policy engine. Actual file storage, malware scanning, content-type validation, secure downloads, and automated renewal notifications remain future work.
+
+
+## Compliance overview and expiry warnings
+
+`GET /api/v1/compliance/overview` returns a summary for evidence attached to applications visible to the authenticated user. It counts expired records, records due within one day, within seven days, within thirty days, and records without an expiry date. The response includes alert rows for expired and near-expiry records and the date on which the summary was computed.
+
+The warning windows `[30, 7, 1]` are synthetic demo defaults, not official AICTE rules. This endpoint computes the overview when requested; it does not send notifications, schedule background jobs, or create escalation records. Institution and regional scoping are applied server-side.
