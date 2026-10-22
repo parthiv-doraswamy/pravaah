@@ -1,6 +1,6 @@
 """Scheduled, idempotent expiry notification and escalation jobs."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
