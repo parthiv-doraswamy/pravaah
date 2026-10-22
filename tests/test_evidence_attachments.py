@@ -162,11 +162,10 @@ def test_upload_requires_write_role_and_download_is_application_scoped(api_clien
     )
     assert forbidden.status_code == 404
 
-    reviewer_app = _setup(session_factory, "upload-readonly@example.test", role="citizen")
+    _setup(session_factory, "upload-readonly@example.test", role="auditor")
     readonly_headers = {"Authorization": f"Bearer {_login(client, 'upload-readonly@example.test')}"}
-    readonly_evidence = _create_evidence(client, readonly_headers, reviewer_app)
     denied = client.post(
-        f"/api/v1/applications/{reviewer_app}/evidence/{readonly_evidence}/attachments",
+        f"/api/v1/applications/{application_id}/evidence/{evidence_id}/attachments",
         headers=readonly_headers,
         files={"file": ("demo.pdf", content, "application/pdf")},
     )
