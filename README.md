@@ -6,7 +6,7 @@ PRAVAAH is a prototype for transparent, policy-driven approval workflow coordina
 
 ## Project status
 
-**Status: Backend tests and lint, plus the frontend production build, passed in GitHub Actions on 22 October 2026.** Scheduled expiry monitoring, compliance escalation records, and optional SMTP retry delivery are implemented in code. The Compose worker scans expiry dates, creates idempotent reminders, opens escalations for long-expired evidence, and attempts email delivery only when SMTP is configured. Docker Compose end-to-end startup and real SMTP delivery still require environment-level verification.
+**Status: Backend tests and lint, plus the frontend production build, passed in GitHub Actions on 22 October 2026.** Scheduled expiry monitoring, compliance escalation records, optional SMTP retry delivery, EVC visit scheduling, structured EVC outcome reports, and links from reports to registered evidence metadata are implemented in code. The Compose worker scans expiry dates, creates idempotent reminders, opens escalations for long-expired evidence, and attempts email delivery only when SMTP is configured. Docker Compose end-to-end startup and real SMTP delivery still require environment-level verification.
 
 ## Planned stack
 
@@ -25,7 +25,7 @@ Exact versions will be pinned and verified as the project is bootstrapped.
 - Versioned synthetic policy registry with explicit provenance labels (not represented as official AICTE rules)
 - Role-guarded state transitions with stale-state conflict protection
 - Append-only application event timeline with SHA-256 hash-chain verification
-- Evidence metadata registry with optional policy linkage and expiry-date visibility (file uploads are not implemented yet)
+- Evidence metadata registry with optional policy linkage and expiry-date visibility; EVC reports can link registered evidence from the same application (binary file uploads/storage are not implemented)
 - Scoped compliance overview with computed expiry alerts and synthetic 30/7/1-day warning windows
 - Scheduled expiry scans and persistent compliance escalations with audit events
 - Optional SMTP delivery with persistent attempt logs and capped exponential retry backoff; email remains deferred when SMTP is not configured
@@ -34,7 +34,7 @@ Exact versions will be pinned and verified as the project is bootstrapped.
 - Deadline provenance, undertakings, and compliance evidence
 - Secure document validity and renewal tracking
 - Reliable notifications, retries, and escalations
-- EVC queue and scheduling history
+- EVC queue and scheduling history, six-section illustrative checklist, draft/submitted outcome reports, evidence references, and audit-linked report actions (demo checklist, not an official inspection standard)
 - Stage-wise pendency and operational reporting
 - Tamper-evident audit history and verification
 
