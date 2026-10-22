@@ -1,5 +1,6 @@
 services:
   db:
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: pravaah
@@ -16,6 +17,7 @@ services:
       retries: 10
 
   api:
+    restart: unless-stopped
     build: .
     environment:
       APP_ENV: development
@@ -45,6 +47,7 @@ services:
       start_period: 20s
 
   web:
+    restart: unless-stopped
     build:
       context: ./web
     environment:
@@ -56,6 +59,7 @@ services:
         condition: service_healthy
 
   notification-worker:
+    restart: unless-stopped
     build: .
     environment:
       APP_ENV: development
