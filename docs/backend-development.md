@@ -11,7 +11,7 @@
 docker compose up --build
 ```
 
-Compose starts PostgreSQL, waits for its health check, applies Alembic migrations, seeds clearly synthetic local demo accounts and cases, starts the API, and launches the Vite frontend. The seeded institution and reviewer accounts use the local-only password `ChangeMe-LocalOnly-123!`; these credentials must never be reused outside this local Compose setup. The local demo database credentials in `docker-compose.yml` are for local development only; never reuse them in a public or production deployment.
+Compose starts PostgreSQL, waits for its health check, applies Alembic migrations, seeds clearly synthetic local demo accounts and cases, starts the API, and launches the Vite frontend. Services use `restart: unless-stopped` so Docker attempts to recover from an unexpected process exit while the Compose project remains enabled; this is not a substitute for monitoring or backup. The seeded institution and reviewer accounts use the local-only password `ChangeMe-LocalOnly-123!`; these credentials must never be reused outside this local Compose setup. The local demo database credentials in `docker-compose.yml` are for local development only; never reuse them in a public or production deployment.
 
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:8000`
