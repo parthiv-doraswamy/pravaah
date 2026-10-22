@@ -12,7 +12,10 @@ from sqlalchemy import select
 from app.auth.security import hash_password
 from app.core.config import get_settings
 from app.db.session import get_session_factory
+from datetime import UTC, datetime
+
 from app.models.core import Application, Institution, User
+from app.models.workflow import PolicyVersion
 
 
 def main() -> None:
@@ -80,7 +83,7 @@ def main() -> None:
         demo_cases = [
             ("PVH-DEMO-1001", "New programme approval", "draft", demo_institution.id),
             ("PVH-DEMO-1002", "Infrastructure compliance review", "submitted", demo_institution.id),
-            ("PVH-DEMO-2001", "Institution renewal application", "scrutiny", second_institution.id),
+            ("PVH-DEMO-2001", "Institution renewal application", "under_scrutiny", second_institution.id),
         ]
         for number, title, case_status, institution_id in demo_cases:
             existing = db.scalar(
@@ -96,6 +99,29 @@ def main() -> None:
                         summary="Synthetic sample record for local demonstration only.",
                     )
                 )
+
+        policy_examples = [
+            ("APPLICATION_COMPLETENESS", 1, "Application completeness check",
+             "Synthetic demo policy describing evidence to review before scrutiny.",
+             {"required_evidence": ["application_form", "institution_identity", "programme_details"], "human_review_required": True}),
+            ("SCRUTINY_TIMELINE", 1, "Scrutiny timeline tracking",
+             "Synthetic demo target duration only; not an official statutory deadline.",
+             {"target_days": 30, "deadline_source": "demo_configuration", "escalation_enabled": True}),
+            ("EVIDENCE_EXPIRY", 1, "Evidence validity monitoring",
+             "Synthetic demo policy for flagging evidence with an approaching expiry date.",
+             {"warning_days": [30, 7, 1], "human_confirmation_required": True}),
+        ]
+        for key, version, title, description, rules in policy_examples:
+            existing_policy = db.scalar(select(PolicyVersion).where(
+                PolicyVersion.policy_key == key, PolicyVersion.version == version
+            ))
+            if existing_policy is None:
+                db.add(PolicyVersion(
+                    policy_key=key, version=version, title=title, description=description,
+                    effective_from=datetime.now(UTC), rules=rules,
+                    source_label="PRAVAAH synthetic demo policy — not an official AICTE rule",
+                    is_active=True,
+                ))
 
         db.commit()
     print("Synthetic PRAVAAH demo records are ready (local development only).")
