@@ -119,6 +119,33 @@ export type ComplianceOverview = {
   warning_source: string
 }
 
+
+export type NotificationRecord = {
+  id: string
+  application_id: string
+  evidence_id: string | null
+  notification_type: string
+  title: string
+  message: string
+  severity: string
+  delivery_status: string
+  attempt_count: number
+  max_attempts: number
+  next_attempt_at: string | null
+  last_error: string | null
+  created_at: string
+  read_at: string | null
+  sent_at: string | null
+}
+
+export type NotificationQueueResult = {
+  as_of: string
+  created: number
+  skipped_existing: number
+  recipient_count: number
+  detail: string
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '')
 const TOKEN_KEY = 'pravaah_access_token'
 
@@ -170,6 +197,9 @@ export const api = {
   verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
   complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
+  notifications: (unreadOnly = false) => request<NotificationRecord[]>(`/notifications?unread_only=${unreadOnly}&limit=50`),
+  markNotificationRead: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+  queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
   transitionApplication: (id: string, targetStatus: string, expectedStatus: string, reason?: string) =>
