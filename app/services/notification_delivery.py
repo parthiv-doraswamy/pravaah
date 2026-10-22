@@ -87,7 +87,7 @@ def process_due_notifications(
         )
         .order_by(NotificationRecord.created_at.asc())
         .limit(min(max(limit, 1), 200))
-        .with_for_update(skip_locked=True)
+        .with_for_update(of=NotificationRecord, skip_locked=True)
     ).all()
 
     sent = 0
