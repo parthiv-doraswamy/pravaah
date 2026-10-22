@@ -112,10 +112,15 @@ def resolve_escalation(
     )),
 ) -> ComplianceEscalation:
     visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
-    escalation = db.scalar(select(ComplianceEscalation).where(
-        ComplianceEscalation.id == escalation_id,
-        ComplianceEscalation.application_id.in_(select(visible_ids.c.id)),
-    ))
+    escalation = db.scalar(
+        select(ComplianceEscalation)
+        .where(
+            ComplianceEscalation.id == escalation_id,
+            ComplianceEscalation.application_id.in_(select(visible_ids.c.id)),
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if escalation is None:
         raise HTTPException(status_code=404, detail="Escalation not found")
     if escalation.status != "resolved":
