@@ -20,7 +20,8 @@ Exact versions will be pinned and verified as the project is bootstrapped.
 
 ## Core capabilities
 
-- Role- and scope-based access control
+- Signed bearer-token login with Argon2 password hashing and server-side role checks
+- Institution-scoped application registry with search, status filtering, and pagination
 - Versioned policy registry and guarded application workflows
 - Application intake, scrutiny, returns, and resubmissions
 - Policy-to-Proof case timeline
