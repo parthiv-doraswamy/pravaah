@@ -248,3 +248,30 @@ def test_multiple_events_in_one_transaction_receive_distinct_sequences(api_clien
         assert [event.event_type for event in events] == ["first_event", "second_event"]
         assert verify_event_chain(events) == (True, None)
 
+
+def test_transition_refreshes_stale_application_before_state_check(api_client_and_sessions):
+    _, session_factory = api_client_and_sessions
+    with session_factory() as first_session:
+        user, application = _case(first_session, "006")
+        stale_application = first_session.get(Application, application.id)
+        with session_factory() as second_session:
+            concurrent_copy = second_session.get(Application, application.id)
+            concurrent_copy.status = "submitted"
+            second_session.commit()
+
+        try:
+            transition_application(
+                first_session,
+                application=stale_application,
+                actor=user,
+                target_status="submitted",
+                expected_status="draft",
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+        else:
+            raise AssertionError("A stale draft view must not overwrite a newer status")
+
+        first_session.refresh(stale_application)
+        assert stale_application.status == "submitted"
+
