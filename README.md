@@ -6,7 +6,7 @@ PRAVAAH is a prototype for transparent, policy-driven approval workflow coordina
 
 ## Project status
 
-**Status: Backend foundation committed; automated verification is configured.** Database connectivity, initial registry models, migrations, local Compose setup, and CI tests are in place. Execution results still need to be confirmed by CI or a local run.
+**Status: Backend foundation and first workflow slice committed.** Login, institution-scoped registry, guarded state transitions, a versioned synthetic policy registry, event timelines, and hash-chain verification are implemented. Execution results still need to be confirmed by CI or a local run.
 
 ## Planned stack
 
@@ -22,7 +22,9 @@ Exact versions will be pinned and verified as the project is bootstrapped.
 
 - Signed bearer-token login with Argon2 password hashing and server-side role checks
 - Institution-scoped application registry with search, status filtering, and pagination
-- Versioned policy registry and guarded application workflows
+- Versioned synthetic policy registry with explicit provenance labels (not represented as official AICTE rules)
+- Role-guarded state transitions with stale-state conflict protection
+- Append-only application event timeline with SHA-256 hash-chain verification
 - Application intake, scrutiny, returns, and resubmissions
 - Policy-to-Proof case timeline
 - Deadline provenance, undertakings, and compliance evidence
