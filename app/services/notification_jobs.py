@@ -92,10 +92,10 @@ def run_expiry_monitoring(db: Session, today: date | None = None) -> dict[str, i
 
         if days < -ESCALATION_AFTER_DAYS:
             escalation_key = f"expired:{evidence.id}:{evidence.expires_on.isoformat()}:after-{ESCALATION_AFTER_DAYS}d"
-            existing_escalation = db.scalar(
-                select(ComplianceEscalation.id).where(ComplianceEscalation.dedupe_key == escalation_key)
+            escalation = db.scalar(
+                select(ComplianceEscalation).where(ComplianceEscalation.dedupe_key == escalation_key)
             )
-            if existing_escalation is None:
+            if escalation is None:
                 escalation = ComplianceEscalation(
                     dedupe_key=escalation_key,
                     application_id=application.id,
@@ -116,23 +116,26 @@ def run_expiry_monitoring(db: Session, today: date | None = None) -> dict[str, i
                               "severity": "high", "days_expired": abs(days),
                               "threshold_days": ESCALATION_AFTER_DAYS, "source": "scheduled_worker"},
                 )
-                for escalation_recipient in [recipient]:
-                    escalation_notification_key = f"escalation:{escalation.id}:{escalation_recipient.id}"
-                    db.add(NotificationRecord(
-                        recipient_user_id=escalation_recipient.id,
-                        application_id=application.id,
-                        evidence_id=evidence.id,
-                        dedupe_key=escalation_notification_key,
-                        notification_type="compliance_escalation",
-                        title=f"Compliance escalation: {evidence.title}",
-                        message=escalation.summary,
-                        severity="escalation",
-                        delivery_status="pending",
-                        attempt_count=0,
-                        max_attempts=5,
-                        next_attempt_at=now,
-                    ))
-                    db.flush()
+            escalation_notification_key = f"escalation:{escalation.id}:{recipient.id}"
+            escalation_notification_exists = db.scalar(
+                select(NotificationRecord.id).where(NotificationRecord.dedupe_key == escalation_notification_key)
+            )
+            if escalation_notification_exists is None:
+                db.add(NotificationRecord(
+                    recipient_user_id=recipient.id,
+                    application_id=application.id,
+                    evidence_id=evidence.id,
+                    dedupe_key=escalation_notification_key,
+                    notification_type="compliance_escalation",
+                    title=f"Compliance escalation: {evidence.title}",
+                    message=escalation.summary,
+                    severity="escalation",
+                    delivery_status="pending",
+                    attempt_count=0,
+                    max_attempts=5,
+                    next_attempt_at=now,
+                ))
+                db.flush()
 
     db.commit()
     return {
