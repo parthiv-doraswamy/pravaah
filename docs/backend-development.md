@@ -44,10 +44,20 @@ alembic current
 
 Do not use `Base.metadata.create_all()` as a substitute for migrations in application environments.
 
-## Initial schema
+## Domain schema and workflow endpoints
 
 - `institutions`: institution identity and regional scope.
-- `users`: user profile, active flag, role label, optional institution association.
+- `users`: user profile, active flag, role label, optional institution association, and password hash.
 - `applications`: application registry and current workflow status label.
+- `policy_versions`: versioned synthetic demo policy records with explicit source labels.
+- `application_events`: ordered application events with previous-hash links and SHA-256 event hashes.
 
-Authentication, server-enforced authorization, audited workflow transitions, and tenant-scope enforcement are not implemented by these tables alone; those are separate follow-up chunks.
+The current API includes:
+
+- `POST /api/v1/auth/login` and `GET /api/v1/auth/me`
+- `GET/POST /api/v1/applications` and `GET /api/v1/applications/{id}`
+- `POST /api/v1/applications/{id}/transitions` for role-guarded state changes with an expected-current-status check
+- `GET /api/v1/applications/{id}/events` and `GET /api/v1/applications/{id}/events/verify`
+- `GET /api/v1/applications/policies/registry`
+
+Demo policy values and target durations are illustrative, not official AICTE rules or legal deadlines. Final approval and rejection remain explicit human actions. The event chain is tamper-evident and verifiable; it is not a substitute for access-controlled storage, backups, or an externally anchored audit log.
