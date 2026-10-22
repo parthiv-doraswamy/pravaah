@@ -93,6 +93,7 @@ def process_due_notifications(
     sent = 0
     failed = 0
     skipped_inactive = 0
+    attempted = 0
     for notification, recipient in records:
         if not recipient.is_active:
             notification.delivery_status = "failed"
@@ -100,8 +101,10 @@ def process_due_notifications(
             notification.next_attempt_at = None
             notification.updated_at = run_at
             skipped_inactive += 1
+            failed += 1
             continue
 
+        attempted += 1
         attempt_number = notification.attempt_count + 1
         next_attempt: datetime | None = None
         try:
@@ -140,7 +143,8 @@ def process_due_notifications(
 
     db.commit()
     return {
-        "attempted": len(records),
+        "processed": len(records),
+        "attempted": attempted,
         "sent": sent,
         "failed": failed,
         "skipped_inactive_recipients": skipped_inactive,
