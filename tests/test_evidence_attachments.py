@@ -241,9 +241,8 @@ def test_upload_removes_file_when_audit_event_persistence_fails(api_client_and_s
     client, session_factory = api_client_and_sessions
     application_id = _setup(session_factory, "upload-persistence-failure@example.test")
     headers = {
-        "Authorization": f"/Bearer {_login(client, 'upload-persistence-failure@example.test')}"
+        "Authorization": f"Bearer {_login(client, 'upload-persistence-failure@example.test')}"
     }
-    headers["Authorization"] = headers["Authorization"].replace("/Bearer ", "Bearer ")
     evidence_id = _create_evidence(client, headers, application_id)
     monkeypatch.setattr(
         evidence_routes,
