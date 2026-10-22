@@ -6,7 +6,6 @@ outside the local development environment.
 """
 
 import os
-
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -14,10 +13,9 @@ from sqlalchemy import select
 from app.auth.security import hash_password
 from app.core.config import get_settings
 from app.db.session import get_session_factory
-from datetime import UTC, datetime
-
 from app.models.core import Application, Institution, User
-from app.models.workflow import PolicyVersion
+from app.models.workflow import ApplicationEvent, PolicyVersion
+from app.services.workflow import append_event
 
 
 def main() -> None:
