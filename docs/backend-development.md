@@ -90,3 +90,18 @@ The `notification_records` table stores recipient-scoped in-app notifications, a
 - `POST /api/v1/notifications/queue-expiry` — reviewer/admin roles can queue idempotent expiry reminders for institution users associated with visible cases.
 
 Newly queued expiry reminders add an event to the application's tamper-evident timeline. The dedupe key is based on the evidence record, expiry date, severity window, and recipient; repeated queue runs skip existing reminders. Records are immediately available in the in-app notification center. External email/SMS transport, a scheduled worker, retry execution, and escalation policies are not implemented yet; retry-related columns are groundwork for that later worker. Warning windows remain synthetic demo defaults, not official AICTE deadlines.
+
+
+## Scheduled notification worker and escalation handling
+
+Docker Compose starts a separate notification-worker process. It runs an expiry scan every NOTIFICATION_WORKER_INTERVAL_SECONDS (default 300 seconds), creates deduplicated in-app expiry notifications, and opens a compliance escalation when evidence has been expired for more than the synthetic seven-day threshold. Both operations append events to the application audit timeline. The threshold is a prototype assumption, not an official AICTE requirement.
+
+The worker also processes due email notifications if SMTP is configured. Set SMTP_HOST, SMTP_PORT, SMTP_FROM, and optional SMTP_USERNAME, SMTP_PASSWORD, and SMTP_USE_TLS in the local environment. Keep credentials out of source control. Without SMTP_HOST and SMTP_FROM, the worker deliberately leaves email delivery pending while in-app notifications remain available; it does not claim that email was sent.
+
+Each actual email attempt is recorded in notification_attempts. Transient failures schedule retries with exponential backoff starting at five minutes and capped at sixty minutes. Once the notification reaches its configured attempt limit, its delivery status becomes failed. The transport is SMTP email only; SMS, provider webhooks, and delivery guarantees beyond the SMTP response are not implemented.
+
+- GET /api/v1/compliance/escalations lists escalations in the authenticated user's application scope.
+- POST /api/v1/compliance/escalations/{id}/resolve lets authorized review roles resolve an escalation; the action is written to the application timeline.
+- python -m scripts.notification_worker --once runs one scan and delivery pass for local diagnostics.
+
+The worker and migrations have been committed but must still be executed in CI or a local environment before treating the workflow as runtime-verified.
