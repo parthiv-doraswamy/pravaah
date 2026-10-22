@@ -44,6 +44,7 @@ function App() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null)
   const [caseEvents, setCaseEvents] = useState<ApplicationEvent[]>([])
   const [evidenceItems, setEvidenceItems] = useState<ApplicationEvidence[]>([])
+  const [evidenceVisitReferences, setEvidenceVisitReferences] = useState<EVCVisit[]>([])
   const [attachmentsByEvidence, setAttachmentsByEvidence] = useState<Record<string, EvidenceAttachment[]>>({})
   const [uploadingEvidenceId, setUploadingEvidenceId] = useState<string | null>(null)
   const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null)
@@ -148,14 +149,14 @@ function App() {
     let cancelled = false
     setLoadingTimeline(true)
     setLoadingEvidence(true)
-    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id), api.evidence(selectedApplication.id)])
-      .then(async ([events, verification, evidence]) => {
+    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id), api.evidence(selectedApplication.id), api.evcVisits({ applicationId: selectedApplication.id })])
+      .then(async ([events, verification, evidence, visits]) => {
         const attachmentLists = await Promise.all(evidence.map(async item => ({
           id: item.id,
           files: await api.evidenceAttachments(selectedApplication.id, item.id),
         })))
         if (!cancelled) {
-          setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence)
+          setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence); setEvidenceVisitReferences(visits)
           setAttachmentsByEvidence(Object.fromEntries(attachmentLists.map(item => [item.id, item.files])))
         }
       })
@@ -599,7 +600,7 @@ function App() {
               return <div className="detail-actions"><div><h3>Workflow actions</h3><p>Actions are limited by role and current status, and rechecked by the server.</p></div>{targets.length ? <><textarea value={transitionReason} onChange={event => setTransitionReason(event.target.value)} rows={2} maxLength={2000} placeholder="Optional note for the audit trail"/><div className="detail-action-buttons">{targets.map(target => <button key={target} className={target === 'rejected' || target === 'returned' ? 'secondary-button' : 'primary-button'} disabled={transitionBusy} onClick={() => void handleTransition(target)}>{transitionBusy ? 'Saving…' : target.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</button>)}</div></> : <p className="no-detail-actions">No action is available for your role in this status.</p>}</div>
             })()}
             <div className="evidence-section">
-              <div className="panel-heading"><div><h2>Evidence & expiry tracking</h2><p>Register evidence metadata and connect it to a policy record. This does not upload or store document files.</p></div><span className="evidence-count">{evidenceItems.length} items</span></div>
+              <div className="panel-heading"><div><h2>Evidence workspace</h2><p>Manage evidence metadata and private attachments, review expiry dates, and see EVC reports that reference each record.</p></div><span className="evidence-count">{evidenceItems.length} items</span></div>
               <form className="evidence-form" onSubmit={handleRegisterEvidence}>
                 <div className="evidence-form-grid">
                   <label>Evidence title<input value={evidenceTitle} onChange={event => setEvidenceTitle(event.target.value)} placeholder="e.g. Fire safety certificate" minLength={2} maxLength={240} required /></label>
@@ -619,6 +620,8 @@ function App() {
                   const expiryState = days === null ? 'No expiry date' : days < 0 ? 'Expired' : days <= 30 ? 'Expires soon' : 'Valid'
                   return <article className="evidence-item" key={item.id}>
                     <div className="evidence-file-icon"><FileCheck2 size={18}/></div><div className="evidence-item-main"><div className="evidence-item-heading"><strong>{item.title}</strong><span className={'evidence-expiry ' + (days !== null && days < 0 ? 'expired' : days !== null && days <= 30 ? 'expiring' : 'valid')}>{expiryState}</span></div><p>{item.category.replaceAll('_', ' ')}{item.reference_number ? ' · Ref ' + item.reference_number : ''}{item.policy_key ? ' · Policy ' + item.policy_key : ''}</p>{item.notes && <p className="evidence-notes">{item.notes}</p>}<span className="evidence-date">{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'Expiry not recorded'}{item.issued_on ? ' · Issued ' + formatDate(item.issued_on) : ''}</span>
+                    <div className="evidence-renewal-row"><button type="button" className="text-button" onClick={() => { setEvidenceTitle(item.title + ' — renewal'); setEvidenceCategory(item.category); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(item.policy_key || ''); setEvidenceNotes('Renewal record started from prior evidence ' + item.id.slice(0, 8) + '. Verify the new document details before registering.'); setNotice('Renewal draft prepared. The existing evidence record remains unchanged.') }}>Start renewal record <ArrowRight size={13}/></button><span>Creates a separate record; does not renew or alter the existing document.</span></div>
+                    {evidenceVisitReferences.some(visit => (visit.linked_evidence_ids || []).includes(item.id)) && <div className="evidence-report-references"><strong>Referenced by EVC reports</strong>{evidenceVisitReferences.filter(visit => (visit.linked_evidence_ids || []).includes(item.id)).map(visit => <span key={visit.id}>Visit {visit.id.slice(0, 8).toUpperCase()} · {visit.report_status.replaceAll('_', ' ')} · {visit.report_submitted_at ? 'Submitted ' + formatDate(visit.report_submitted_at) : 'Not submitted'}</span>)}</div>}
                     <div className="evidence-attachments">
                       <div className="evidence-attachments-heading"><strong><FileText size={13}/> Attached files</strong><span>{(attachmentsByEvidence[item.id] || []).length} file(s)</span></div>
                       {(attachmentsByEvidence[item.id] || []).length === 0 ? <p className="evidence-attachments-empty">No files attached. PDF, PNG and JPEG files up to the configured limit are supported.</p> : <div className="evidence-attachment-list">{(attachmentsByEvidence[item.id] || []).map(attachment => <div className="evidence-attachment-row" key={attachment.id}><div><strong>{attachment.original_filename}</strong><span>{(attachment.size_bytes / 1024).toFixed(1)} KB · SHA-256 {attachment.sha256_hex.slice(0, 12)}…</span></div><button type="button" className="text-button" disabled={downloadingAttachmentId === attachment.id} onClick={() => void handleDownloadEvidenceFile(item.id, attachment)}>{downloadingAttachmentId === attachment.id ? 'Preparing…' : 'Download'}</button></div>)}</div>}
@@ -686,7 +689,7 @@ function App() {
                 const selected = reportEvidenceIds.includes(item.id)
                 return <label className="evc-evidence-option" key={item.id}><input type="checkbox" checked={selected} disabled={locked} onChange={event => setReportEvidenceIds(ids => event.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))}/><span className="evc-evidence-option-main"><strong>{item.title}</strong><small>{item.category.replaceAll('_', ' ')}{item.reference_number ? ' · Ref ' + item.reference_number : ''}</small></span><span className="evc-evidence-date">{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'No expiry date'}</span></label>
               })}</div>}
-              <p className="evc-evidence-footnote">Prototype links reference evidence records only; binary file uploads and storage are not implemented.</p>
+              <p className="evc-evidence-footnote">Reports link to evidence metadata records. Private PDF/PNG/JPEG attachments are available from the application evidence workspace; checklist items remain illustrative, not official regulatory criteria.</p>
             </div>
             <label className="evc-report-field">Outcome summary<textarea value={reportOutcome} disabled={evcVisits.find(item => item.id === reportVisitId)?.report_status === 'submitted'} onChange={event => setReportOutcome(event.target.value)} minLength={10} maxLength={4000} rows={3} placeholder="Summarize the visit observations and outcome…" required/></label>
             <label className="evc-report-field">Additional observations<textarea value={reportObservations} disabled={evcVisits.find(item => item.id === reportVisitId)?.report_status === 'submitted'} onChange={event => setReportObservations(event.target.value)} maxLength={10000} rows={3} placeholder="Optional follow-up actions or supporting context"/></label>
