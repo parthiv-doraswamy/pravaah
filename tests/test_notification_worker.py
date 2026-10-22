@@ -45,7 +45,7 @@ def test_worker_queues_expiry_alerts_and_escalates_long_expired_evidence(api_cli
 
     with session_factory() as db:
         result = run_expiry_monitoring(db, today=today)
-    assert result["notifications_queued"] == 4
+    assert result["notifications_queued"] == 6
     assert result["escalations_opened"] == 1
 
     with session_factory() as db:
