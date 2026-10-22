@@ -5,9 +5,9 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type User } from './api'
 
-type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance'
+type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
 
 const statusLabels: Record<string, string> = {
   draft: 'Draft', submitted: 'Submitted', under_scrutiny: 'Under scrutiny', scrutiny: 'Under scrutiny',
@@ -58,6 +58,17 @@ function App() {
   const [queueingNotifications, setQueueingNotifications] = useState(false)
   const [policies, setPolicies] = useState<PolicyVersion[]>([])
   const [loadingPolicies, setLoadingPolicies] = useState(false)
+  const [evcVisits, setEvcVisits] = useState<EVCVisit[]>([])
+  const [loadingEvcVisits, setLoadingEvcVisits] = useState(false)
+  const [evcStatusFilter, setEvcStatusFilter] = useState('scheduled')
+  const [showEvcForm, setShowEvcForm] = useState(false)
+  const [savingEvcVisit, setSavingEvcVisit] = useState(false)
+  const [evcApplicationId, setEvcApplicationId] = useState('')
+  const [evcScheduledFor, setEvcScheduledFor] = useState('')
+  const [evcMode, setEvcMode] = useState<'onsite' | 'virtual'>('onsite')
+  const [evcLocation, setEvcLocation] = useState('')
+  const [evcNotes, setEvcNotes] = useState('')
+  const [updatingEvcVisitId, setUpdatingEvcVisitId] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const [loadingCases, setLoadingCases] = useState(false)
   const [query, setQuery] = useState('')
@@ -215,6 +226,67 @@ function App() {
     if (user && view === 'policies') void loadPolicies()
   }, [user, view, loadPolicies])
 
+  const loadEvcVisits = useCallback(async () => {
+    if (!user) return
+    setLoadingEvcVisits(true)
+    setNotice('')
+    try {
+      setEvcVisits(await api.evcVisits({ status: evcStatusFilter || undefined }))
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not load EVC visits.')
+    } finally {
+      setLoadingEvcVisits(false)
+    }
+  }, [user, evcStatusFilter])
+
+  useEffect(() => {
+    if (user && view === 'evc') void loadEvcVisits()
+  }, [user, view, loadEvcVisits])
+
+  const canScheduleEvc = ['evc_coordinator', 'bureau_officer', 'policy_admin', 'system_admin'].includes(user?.role || '')
+
+  async function handleScheduleEvcVisit(event: FormEvent) {
+    event.preventDefault()
+    if (!evcApplicationId || !evcScheduledFor) return
+    setSavingEvcVisit(true)
+    setNotice('')
+    try {
+      await api.scheduleEVCVisit({
+        application_id: evcApplicationId,
+        scheduled_for: new Date(evcScheduledFor).toISOString(),
+        mode: evcMode,
+        ...(evcMode === 'onsite' && evcLocation.trim() ? { location: evcLocation.trim() } : {}),
+        ...(evcNotes.trim() ? { notes: evcNotes.trim() } : {}),
+      })
+      setShowEvcForm(false)
+      setEvcApplicationId('')
+      setEvcScheduledFor('')
+      setEvcMode('onsite')
+      setEvcLocation('')
+      setEvcNotes('')
+      await loadEvcVisits()
+      setNotice('EVC visit scheduled and recorded in the application audit timeline.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not schedule EVC visit.')
+    } finally {
+      setSavingEvcVisit(false)
+    }
+  }
+
+  async function handleUpdateEvcVisit(visit: EVCVisit, status: 'completed' | 'cancelled') {
+    setUpdatingEvcVisitId(visit.id)
+    setNotice('')
+    try {
+      await api.updateEVCVisitStatus(visit.id, status)
+      await loadEvcVisits()
+      setNotice(`EVC visit marked ${status}; the action was recorded in the audit timeline.`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not update EVC visit.')
+    } finally {
+      setUpdatingEvcVisitId(null)
+    }
+  }
+
   const metrics = useMemo(() => {
     const active = applications.filter(item => !['completed', 'withdrawn'].includes(item.status)).length
     const awaiting = applications.filter(item => ['submitted', 'scrutiny', 're_scrutiny', 'awaiting_institution_response'].includes(item.status)).length
@@ -342,6 +414,8 @@ function App() {
   const navItems = [
     { id: 'overview' as const, label: 'Overview', icon: LayoutDashboard },
     { id: 'applications' as const, label: 'Applications', icon: ClipboardList, count: total },
+    { id: 'evc' as const, label: 'EVC scheduling', icon: CalendarClock },
+    { id: 'compliance' as const, label: 'Deadlines & compliance', icon: ShieldCheck },
 
   ]
   const roleLabel = user.role.replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase())
@@ -357,17 +431,17 @@ function App() {
           {navItems.map(item => <button key={item.id} className={`nav-item ${view === item.id ? 'active' : ''}`} onClick={() => { setView(item.id); setMobileNav(false) }}><item.icon size={18} /><span>{item.label}</span>{item.id === 'applications' && <span className="nav-count">{total}</span>}</button>)}
         </nav>
         <div className="nav-label nav-label-spaced">OPERATIONS</div>
-        <div className="nav-item nav-disabled"><CalendarClock size={18} /><span>Deadlines & compliance</span><span className="soon-dot" /></div>
-        <button className="nav-item" onClick={() => { setView("policies"); setMobileNav(false) }}><BookOpenCheck size={18} /><span>Policy registry</span></button>
+        
+        <button className={'nav-item ' + (view === 'policies' ? 'active' : '')} onClick={() => { setView('policies'); setMobileNav(false) }}><BookOpenCheck size={18} /><span>Policy registry</span></button>
         <div className="nav-item nav-disabled"><FileCheck2 size={18} /><span>Evidence & documents</span><span className="soon-dot" /></div>
         <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><CircleHelp size={18} /></div><strong>Need a hand?</strong><p>Explore the workflow guide as modules become available.</p><span>Prototype workspace</span></div><div className="sidebar-foot"><span className="online-dot" /> API-connected workspace <span className="version">v0.1</span></div></div>
       </aside>
 
       <main className="main-panel">
-        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" title="Open notifications" onClick={() => { const next = !notificationsOpen; setNotificationsOpen(next); if (next) void loadNotifications() }}><Bell size={18} />{notifications.some(item => !item.read_at) && <i />}</button>{notificationsOpen && <div className="notification-popover"><div className="notification-popover-head"><div><strong>Notifications</strong><span>{notifications.filter(item => !item.read_at).length} unread</span></div><button className="text-button" onClick={() => void loadNotifications()} disabled={loadingNotifications}>Refresh</button></div>{loadingNotifications && notifications.length === 0 ? <div className="notification-empty">Loading notifications…</div> : notifications.length === 0 ? <div className="notification-empty">No notifications yet. Expiry alerts can be queued from Deadlines & compliance.</div> : <div className="notification-list">{notifications.slice(0, 12).map(item => <button className={'notification-row ' + (!item.read_at ? 'unread' : '')} key={item.id} onClick={() => void handleMarkNotificationRead(item)}><span className={'notification-severity ' + item.severity}><Bell size={14}/></span><span className="notification-row-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{formatDate(item.created_at)} · {item.delivery_status}</small></span>{!item.read_at && <i />}</button>)}</div>}</div>}</div><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
+        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" title="Open notifications" onClick={() => { const next = !notificationsOpen; setNotificationsOpen(next); if (next) void loadNotifications() }}><Bell size={18} />{notifications.some(item => !item.read_at) && <i />}</button>{notificationsOpen && <div className="notification-popover"><div className="notification-popover-head"><div><strong>Notifications</strong><span>{notifications.filter(item => !item.read_at).length} unread</span></div><button className="text-button" onClick={() => void loadNotifications()} disabled={loadingNotifications}>Refresh</button></div>{loadingNotifications && notifications.length === 0 ? <div className="notification-empty">Loading notifications…</div> : notifications.length === 0 ? <div className="notification-empty">No notifications yet. Expiry alerts can be queued from Deadlines & compliance.</div> : <div className="notification-list">{notifications.slice(0, 12).map(item => <button className={'notification-row ' + (!item.read_at ? 'unread' : '')} key={item.id} onClick={() => void handleMarkNotificationRead(item)}><span className={'notification-severity ' + item.severity}><Bell size={14}/></span><span className="notification-row-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{formatDate(item.created_at)} · {item.delivery_status}</small></span>{!item.read_at && <i />}</button>)}</div>}</div>}</div><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
 
         <div className="content-area">
-          <div className="page-heading"><div><div className="eyebrow">YOUR WORKSPACE <span className="heading-dot">·</span> {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div><h1>{view === 'overview' ? 'Good to see you, ' + user.full_name.split(' ')[0] + '.' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : 'Policy registry'}</h1><p>{view === 'overview' ? 'Here’s the latest view of your approval workflow.' : view === 'applications' ? 'Search, review and manage your application records.' : view === 'detail' ? 'Review the current record and its latest status.' : view === 'compliance' ? 'Monitor recorded evidence expiry dates across your visible applications.' : 'Review versioned policy records and their configured rules.'}</p></div><div className="heading-actions"><button className="secondary-button" onClick={() => void (view === 'policies' ? loadPolicies() : loadApplications())} disabled={view === 'policies' ? loadingPolicies : loadingCases}><Activity size={16} className={(view === 'policies' ? loadingPolicies : loadingCases) ? 'spin' : ''} /> Refresh</button>{view !== 'policies' && user.role === 'institution_user' && <button className="primary-button" onClick={() => setCreateOpen(true)}><Plus size={17} /> New application</button>}</div></div>
+          <div className="page-heading"><div><div className="eyebrow">YOUR WORKSPACE <span className="heading-dot">·</span> {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div><h1>{view === 'overview' ? 'Good to see you, ' + user.full_name.split(' ')[0] + '.' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : 'Policy registry'}</h1><p>{view === 'overview' ? 'Here’s the latest view of your approval workflow.' : view === 'applications' ? 'Search, review and manage your application records.' : view === 'detail' ? 'Review the current record and its latest status.' : view === 'compliance' ? 'Monitor recorded evidence expiry dates across your visible applications.' : view === 'evc' ? 'Plan verification visits and keep outcomes traceable.' : 'Review versioned policy records and their configured rules.'}</p></div><div className="heading-actions"><button className="secondary-button" onClick={() => void (view === 'policies' ? loadPolicies() : loadApplications())} disabled={view === 'policies' ? loadingPolicies : loadingCases}><Activity size={16} className={(view === 'policies' ? loadingPolicies : loadingCases) ? 'spin' : ''} /> Refresh</button>{view !== 'policies' && user.role === 'institution_user' && <button className="primary-button" onClick={() => setCreateOpen(true)}><Plus size={17} /> New application</button>}</div></div>
 
           {notice && <div className={`notice ${notice.toLowerCase().includes('success') ? 'notice-success' : ''}`} role="status"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Dismiss message"><X size={16} /></button></div>}
 
