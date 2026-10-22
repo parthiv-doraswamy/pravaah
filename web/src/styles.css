@@ -29,3 +29,14 @@
 .policy-source { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; color: #63728a; font-size: 11px; line-height: 1.5; }
 .policy-source svg { flex: 0 0 auto; color: #6c7c99; }
 @media (max-width: 800px) { .policy-grid { grid-template-columns: 1fr; } .policy-intro { align-items: flex-start; flex-wrap: wrap; } .policy-intro > div:nth-child(2) { flex-basis: calc(100% - 72px); } .policy-intro > button { margin-left: 68px; } }
+
+.case-detail-panel { padding: 24px; }
+.case-detail-panel .panel-heading { align-items: flex-start; }
+.case-detail-panel .panel-heading h2 { margin-top: 6px; font-size: 22px; }
+.case-detail-panel .panel-heading p { max-width: 620px; line-height: 1.6; }
+.case-detail-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+.case-detail-facts > div { min-width: 0; display: flex; flex-direction: column; gap: 7px; padding: 15px; border: 1px solid var(--line, #e4e8ef); border-radius: 12px; background: #fafbfe; }
+.case-detail-facts span { color: var(--muted, #697386); font-size: 11px; }
+.case-detail-facts strong { overflow-wrap: anywhere; color: var(--text, #152033); font-size: 12px; }
+.audit-summary { display: flex; align-items: flex-start; gap: 13px; margin-top: 18px; padding: 16px; border: 1px solid #cbe9d8; border-radius: 13px; background: #f1fbf5; color: #1e704b; }
+.audit-summary p { margin: 5px 0 0; color: #4c6e5e; font-size: 11px; line-height: 1.6; }
