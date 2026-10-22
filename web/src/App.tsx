@@ -280,8 +280,7 @@ function App() {
   const navItems = [
     { id: 'overview' as const, label: 'Overview', icon: LayoutDashboard },
     { id: 'applications' as const, label: 'Applications', icon: ClipboardList, count: total },
-    { id: 'compliance' as const, label: 'Deadlines & compliance', icon: CalendarClock },
-    { id: 'policies' as const, label: 'Policy registry', icon: BookOpenCheck },
+
   ]
   const roleLabel = user.role.replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase())
 
