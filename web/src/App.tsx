@@ -562,6 +562,30 @@ function App() {
 
   ]
   const roleLabel = user.role.replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase())
+  const workflowWorkMap: Record<string, { statuses: string[]; action: string; detail: string }[]> = {
+    institution_user: [
+      { statuses: ['draft'], action: 'Submit application', detail: 'Complete the draft and submit it for scrutiny' },
+      { statuses: ['clarification_requested'], action: 'Respond to clarification', detail: 'Update the application and resubmit' },
+      { statuses: ['returned'], action: 'Revise and resubmit', detail: 'Address the return notes before resubmission' },
+    ],
+    scrutiny_officer: [
+      { statuses: ['submitted'], action: 'Start scrutiny', detail: 'Begin the initial application review' },
+      { statuses: ['under_scrutiny'], action: 'Continue scrutiny', detail: 'Request clarification, recommend approval or return' },
+    ],
+    bureau_officer: [
+      { statuses: ['recommended_for_approval'], action: 'Forward for decision', detail: 'Move the recommendation to competent authority' },
+    ],
+    competent_authority: [
+      { statuses: ['pending_authority_decision'], action: 'Record decision', detail: 'Review the case and approve or reject' },
+    ],
+  }
+  const myWorkflowItems = applications.flatMap(application => {
+    const rule = (workflowWorkMap[user.role] || []).find(item => item.statuses.includes(application.status))
+    return rule ? [{ application, ...rule }] : []
+  }).slice(0, 6)
+  const myEvcReportItems = user.role === 'evc_coordinator'
+    ? evcVisits.filter(visit => visit.status === 'completed' && visit.report_status !== 'submitted').slice(0, 4)
+    : []
 
   return (
     <div className="app-shell">
@@ -608,6 +632,16 @@ function App() {
           </>}
 
           {view === 'overview' && <section className="dashboard-operations-grid">
+               <div className="panel dashboard-ops-panel dashboard-work-panel">
+                 <div className="panel-heading"><div><h2>My work</h2><p>Next steps for your {roleLabel.toLowerCase()} role</p></div><button className="text-button" onClick={() => setView('applications')}>Open register <ArrowRight size={14}/></button></div>
+                 {myWorkflowItems.length === 0 && myEvcReportItems.length === 0
+                   ? <div className="dashboard-empty"><Check size={18}/><span>No workflow actions are waiting in the currently loaded records.</span></div>
+                   : <div className="dashboard-compact-list">
+                     {myWorkflowItems.map(({application, action, detail}) => <button className="dashboard-compact-row" key={application.id} onClick={() => { setSelectedApplication(application); setView('detail') }}><span className="dashboard-work-mark"><ClipboardList size={15}/></span><span className="dashboard-compact-copy"><strong>{action}</strong><small>{application.application_number} · {application.title}</small><small>{detail}</small></span><ArrowRight size={14}/></button>)}
+                     {myEvcReportItems.map(visit => { const application = applications.find(item => item.id === visit.application_id); return <button className="dashboard-compact-row" key={visit.id} onClick={() => setView('evc')}><span className="dashboard-work-mark"><FileCheck2 size={15}/></span><span className="dashboard-compact-copy"><strong>Complete EVC report</strong><small>{application?.application_number || 'Application'} · {application?.title || 'Visit report'}</small><small>Visit completed; report is not submitted</small></span><ArrowRight size={14}/></button> })}
+                   </div>}
+                 <p className="dashboard-work-footnote">Actions shown are role and status based. The API validates permissions again when you submit a change.</p>
+               </div>
                <div className="panel dashboard-ops-panel">
                  <div className="panel-heading"><div><h2>Evidence needing attention</h2><p>Expiry dates from records in your access scope</p></div><button className="text-button" onClick={() => setView('compliance')}>Open compliance <ArrowRight size={14}/></button></div>
                  {dashboardLoading && !compliance ? <div className="table-state"><span>Loading evidence alerts…</span></div> : !compliance ? <div className="dashboard-empty">Compliance data is currently unavailable.</div> : compliance.alerts.length === 0 ? <div className="dashboard-empty"><ShieldCheck size={18}/><span>No expired or near-expiry evidence in the current records.</span></div> : <div className="dashboard-compact-list">{compliance.alerts.slice(0, 4).map(alert => <button className="dashboard-compact-row" key={alert.evidence_id} onClick={() => void openAlertApplication(alert.application_id)}><span className={'dashboard-alert-mark ' + alert.severity}><AlertTriangle size={15}/></span><span className="dashboard-compact-copy"><strong>{alert.title}</strong><small>{alert.application_number} · {alert.days_remaining < 0 ? Math.abs(alert.days_remaining) + ' days overdue' : alert.days_remaining === 0 ? 'Expires today' : alert.days_remaining + ' days left'}</small></span><ArrowRight size={14}/></button>)}</div>}
