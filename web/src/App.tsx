@@ -92,6 +92,8 @@ function App() {
   const [savingEvcReport, setSavingEvcReport] = useState(false)
   const [total, setTotal] = useState(0)
   const [loadingCases, setLoadingCases] = useState(false)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardRecentEvents, setDashboardRecentEvents] = useState<{ application: Application; event: ApplicationEvent }[]>([])
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [notice, setNotice] = useState('')
@@ -143,6 +145,32 @@ function App() {
   useEffect(() => {
     if (user) void loadApplications()
   }, [user, loadApplications])
+
+  useEffect(() => {
+    if (!user || view !== 'overview') return
+    let cancelled = false
+    setDashboardLoading(true)
+    Promise.all([
+      api.complianceOverview().catch(() => null),
+      api.evcVisits().catch(() => [] as EVCVisit[]),
+      Promise.all(applications.slice(0, 8).map(async application => {
+        try {
+          const events = await api.applicationEvents(application.id)
+          return events.map(event => ({ application, event }))
+        } catch {
+          return []
+        }
+      })),
+    ]).then(([overview, visits, eventGroups]) => {
+      if (cancelled) return
+      if (overview) setCompliance(overview)
+      setEvcVisits(visits)
+      setDashboardRecentEvents(eventGroups.flat().sort((a, b) => new Date(b.event.occurred_at).getTime() - new Date(a.event.occurred_at).getTime()).slice(0, 6))
+    }).finally(() => {
+      if (!cancelled) setDashboardLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [user, view, applications])
 
   useEffect(() => {
     if (!user || view !== 'detail' || !selectedApplication) return
@@ -579,6 +607,20 @@ function App() {
             ].map(item=><div className="status-row" key={item.label}><div className="status-row-top"><span>{item.label}</span><strong>{item.count}</strong></div><div className="bar-track"><div className={`bar-fill ${item.color}`} style={{width: `${total ? Math.max(item.count / total * 100, item.count ? 4 : 0) : 0}%`}}/></div></div>)}</div><div className="status-foot"><span className="status-foot-dot"/> Counts update when the register refreshes.</div></div></section>
           </>}
 
+             <section className="dashboard-operations-grid">
+               <div className="panel dashboard-ops-panel">
+                 <div className="panel-heading"><div><h2>Evidence needing attention</h2><p>Expiry dates from records in your access scope</p></div><button className="text-button" onClick={() => setView('compliance')}>Open compliance <ArrowRight size={14}/></button></div>
+                 {dashboardLoading && !compliance ? <div className="table-state"><span>Loading evidence alerts…</span></div> : !compliance ? <div className="dashboard-empty">Compliance data is currently unavailable.</div> : compliance.alerts.length === 0 ? <div className="dashboard-empty"><ShieldCheck size={18}/><span>No expired or near-expiry evidence in the current records.</span></div> : <div className="dashboard-compact-list">{compliance.alerts.slice(0, 4).map(alert => <button className="dashboard-compact-row" key={alert.evidence_id} onClick={() => void openAlertApplication(alert.application_id)}><span className={'dashboard-alert-mark ' + alert.severity}><AlertTriangle size={15}/></span><span className="dashboard-compact-copy"><strong>{alert.title}</strong><small>{alert.application_number} · {alert.days_remaining < 0 ? Math.abs(alert.days_remaining) + ' days overdue' : alert.days_remaining === 0 ? 'Expires today' : alert.days_remaining + ' days left'}</small></span><ArrowRight size={14}/></button>)}</div>}
+               </div>
+               <div className="panel dashboard-ops-panel">
+                 <div className="panel-heading"><div><h2>Upcoming EVC visits</h2><p>Scheduled verification visits</p></div><button className="text-button" onClick={() => setView('evc')}>View schedule <ArrowRight size={14}/></button></div>
+                 {dashboardLoading && evcVisits.length === 0 ? <div className="table-state"><span>Loading visit schedule…</span></div> : evcVisits.filter(visit => visit.status === 'scheduled' && new Date(visit.scheduled_for).getTime() >= Date.now()).sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime()).length === 0 ? <div className="dashboard-empty"><CalendarClock size={18}/><span>No upcoming visits are scheduled.</span></div> : <div className="dashboard-compact-list">{evcVisits.filter(visit => visit.status === 'scheduled' && new Date(visit.scheduled_for).getTime() >= Date.now()).sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime()).slice(0, 4).map(visit => { const application = applications.find(item => item.id === visit.application_id); return <button className="dashboard-compact-row" key={visit.id} onClick={() => setView('evc')}><span className="dashboard-visit-mark"><CalendarClock size={15}/></span><span className="dashboard-compact-copy"><strong>{application?.title || 'Application visit'}</strong><small>{new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(visit.scheduled_for))} · {visit.mode}</small></span><ArrowRight size={14}/></button> })}</div>}
+               </div>
+               <div className="panel dashboard-ops-panel dashboard-activity-panel">
+                 <div className="panel-heading"><div><h2>Recent workflow activity</h2><p>Latest events from your most recent visible applications</p></div><button className="text-button" onClick={() => setView('applications')}>Open register <ArrowRight size={14}/></button></div>
+                 {dashboardLoading && dashboardRecentEvents.length === 0 ? <div className="table-state"><span>Loading recent activity…</span></div> : dashboardRecentEvents.length === 0 ? <div className="dashboard-empty"><Activity size={18}/><span>No workflow events are available yet.</span></div> : <div className="dashboard-timeline-list">{dashboardRecentEvents.map(({application,event}) => <button className="dashboard-timeline-row" key={event.id} onClick={() => { setSelectedApplication(application); setView('detail') }}><span className="dashboard-timeline-dot"/><span className="dashboard-compact-copy"><strong>{event.event_type.replaceAll('_',' ')}</strong><small>{application.application_number} · {application.title}</small></span><time>{new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short' }).format(new Date(event.occurred_at))}</time></button>)}</div>}
+               </div>
+             </section>
           {view === 'applications' && <section className="panel applications-panel"><div className="panel-heading list-panel-heading"><div><h2>Application register</h2><p>{total} record{total===1?'':'s'} visible within your access scope</p></div><div className="register-actions"><button className="secondary-button small-button" onClick={() => void loadApplications()} disabled={loadingCases}><Activity size={15} className={loadingCases?'spin':''}/> Refresh</button>{user.role==='institution_user'&&<button className="primary-button small-button" onClick={() => setCreateOpen(true)}><Plus size={16}/> New application</button>}</div></div><div className="filter-row"><div className="search-field"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void loadApplications()}} placeholder="Search by title or application ID" aria-label="Search applications"/><kbd>Enter</kbd></div><div className="filter-select-wrap"><Filter size={16}/><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} aria-label="Filter by status"><option value="">All statuses</option>{Object.entries(statusLabels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select><ChevronDown size={14}/></div><button className="secondary-button filter-apply" onClick={()=>void loadApplications()}><SlidersHorizontal size={15}/> Apply filters</button></div><ApplicationTable applications={applications} loading={loadingCases} onOpen={application => { setSelectedApplication(application); setView('detail') }} /><div className="table-footer"><span>Showing <strong>{applications.length}</strong> of <strong>{total}</strong> matching records</span><span className="footer-scope"><ShieldCheck size={14}/> Access-scoped results</span></div></section>}
 
 
