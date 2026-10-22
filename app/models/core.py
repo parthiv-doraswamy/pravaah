@@ -4,8 +4,8 @@ These tables are structural foundations only; authentication and authorization r
 will be implemented in a separate, tested service layer.
 """
 
-from datetime import UTC, datetime
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
