@@ -18,6 +18,8 @@ class Settings(BaseSettings):
         default="local-development-only-change-this-secret-before-deployment", min_length=32
     )
     access_token_expire_minutes: int = 30
+    evidence_storage_dir: str = "./var/uploads"
+    evidence_max_upload_bytes: int = 10485760
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
