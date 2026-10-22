@@ -124,11 +124,11 @@ def queue_expiry_notifications(
             max_attempts=5,
             next_attempt_at=None,
         )
-        db.add(record)
         try:
-            db.flush()
+            with db.begin_nested():
+                db.add(record)
+                db.flush()
         except IntegrityError:
-            db.rollback()
             skipped += 1
             continue
         created += 1
