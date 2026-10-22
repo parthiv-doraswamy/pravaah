@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:5173"
+    database_url: str = "postgresql+psycopg://pravaah:pravaah@localhost:5432/pravaah"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
