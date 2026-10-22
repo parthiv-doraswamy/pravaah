@@ -77,7 +77,16 @@ def transition_application(
     db: Session, *, application: Application, actor: User, target_status: str,
     expected_status: str, reason: str | None = None,
 ) -> Application:
-    """Validate role, expected current state, and allowed transition before mutation."""
+    """Lock and refresh the case before validating and applying a transition."""
+    locked_application = db.scalar(
+        select(Application)
+        .where(Application.id == application.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked_application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    application = locked_application
     if application.status != expected_status:
         raise HTTPException(status_code=409, detail=f"Application status changed; current status is '{application.status}'")
     allowed = TRANSITIONS.get(application.status, {}).get(actor.role, set())
