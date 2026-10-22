@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance'
 
@@ -50,6 +50,10 @@ function App() {
   const [transitionBusy, setTransitionBusy] = useState(false)
   const [compliance, setCompliance] = useState<ComplianceOverview | null>(null)
   const [loadingCompliance, setLoadingCompliance] = useState(false)
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([])
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [queueingNotifications, setQueueingNotifications] = useState(false)
   const [policies, setPolicies] = useState<PolicyVersion[]>([])
   const [loadingPolicies, setLoadingPolicies] = useState(false)
   const [total, setTotal] = useState(0)
@@ -119,6 +123,42 @@ function App() {
       .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false) } })
     return () => { cancelled = true }
   }, [user, view, selectedApplication])
+
+  const loadNotifications = useCallback(async () => {
+    if (!user) return
+    setLoadingNotifications(true)
+    try { setNotifications(await api.notifications()) }
+    catch (error) { setNotice(error instanceof Error ? error.message : 'Could not load notifications.') }
+    finally { setLoadingNotifications(false) }
+  }, [user])
+
+  useEffect(() => { if (user) void loadNotifications() }, [user, loadNotifications])
+
+  async function handleMarkNotificationRead(notification: NotificationRecord) {
+    try {
+      if (!notification.read_at) await api.markNotificationRead(notification.id)
+      setNotifications(items => items.map(item => item.id === notification.id && !item.read_at ? { ...item, read_at: new Date().toISOString() } : item))
+      setNotificationsOpen(false)
+      await openAlertApplication(notification.application_id)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not open this notification.')
+    }
+  }
+
+  async function handleQueueNotifications() {
+    setQueueingNotifications(true)
+    setNotice('')
+    try {
+      const result = await api.queueExpiryNotifications()
+      await loadNotifications()
+      await loadCompliance()
+      setNotice(`Queued ${result.created} notification(s); ${result.skipped_existing} duplicate(s) skipped.`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not queue expiry notifications.')
+    } finally {
+      setQueueingNotifications(false)
+    }
+  }
 
   const loadCompliance = useCallback(async () => {
     if (!user) return
@@ -302,7 +342,7 @@ function App() {
       </aside>
 
       <main className="main-panel">
-        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><button className="icon-button notification-button" aria-label="Notifications" title="Notifications are not implemented yet"><Bell size={18} /><i /></button><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
+        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" title="Open notifications" onClick={() => { const next = !notificationsOpen; setNotificationsOpen(next); if (next) void loadNotifications() }}><Bell size={18} />{notifications.some(item => !item.read_at) && <i />}</button>{notificationsOpen && <div className="notification-popover"><div className="notification-popover-head"><div><strong>Notifications</strong><span>{notifications.filter(item => !item.read_at).length} unread</span></div><button className="text-button" onClick={() => void loadNotifications()} disabled={loadingNotifications}>Refresh</button></div>{loadingNotifications && notifications.length === 0 ? <div className="notification-empty">Loading notifications…</div> : notifications.length === 0 ? <div className="notification-empty">No notifications yet. Expiry alerts can be queued from Deadlines & compliance.</div> : <div className="notification-list">{notifications.slice(0, 12).map(item => <button className={'notification-row ' + (!item.read_at ? 'unread' : '')} key={item.id} onClick={() => void handleMarkNotificationRead(item)}><span className={'notification-severity ' + item.severity}><Bell size={14}/></span><span className="notification-row-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{formatDate(item.created_at)} · {item.delivery_status}</small></span>{!item.read_at && <i />}</button>)}</div>}</div>}</div><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
 
         <div className="content-area">
           <div className="page-heading"><div><div className="eyebrow">YOUR WORKSPACE <span className="heading-dot">·</span> {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div><h1>{view === 'overview' ? 'Good to see you, ' + user.full_name.split(' ')[0] + '.' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : 'Policy registry'}</h1><p>{view === 'overview' ? 'Here’s the latest view of your approval workflow.' : view === 'applications' ? 'Search, review and manage your application records.' : view === 'detail' ? 'Review the current record and its latest status.' : view === 'compliance' ? 'Monitor recorded evidence expiry dates across your visible applications.' : 'Review versioned policy records and their configured rules.'}</p></div><div className="heading-actions"><button className="secondary-button" onClick={() => void (view === 'policies' ? loadPolicies() : loadApplications())} disabled={view === 'policies' ? loadingPolicies : loadingCases}><Activity size={16} className={(view === 'policies' ? loadingPolicies : loadingCases) ? 'spin' : ''} /> Refresh</button>{view !== 'policies' && user.role === 'institution_user' && <button className="primary-button" onClick={() => setCreateOpen(true)}><Plus size={17} /> New application</button>}</div></div>
@@ -382,6 +422,7 @@ function App() {
 
           {view === 'compliance' && <section className="compliance-page">
             <div className="compliance-intro"><div className="compliance-intro-icon"><CalendarClock size={22}/></div><div><div className="eyebrow">DEADLINE INTELLIGENCE</div><h2>Evidence expiry overview</h2><p>Computed from recorded evidence dates for applications visible to your account.</p></div><button className="secondary-button small-button" onClick={() => void loadCompliance()} disabled={loadingCompliance}><Activity size={15} className={loadingCompliance ? 'spin' : ''}/> Refresh</button></div>
+            <div className="compliance-queue-action"><div><strong>Notification queue</strong><span>Generate in-app reminders for evidence due within 30 days. Duplicate alerts are skipped.</span></div><button className="primary-button small-button" onClick={() => void handleQueueNotifications()} disabled={queueingNotifications}>{queueingNotifications ? <Activity size={15} className="spin"/> : <Bell size={15}/>} Queue expiry alerts</button></div>
             <div className="compliance-disclaimer"><AlertTriangle size={18}/><span><strong>Illustrative warning windows.</strong> {compliance?.warning_source || 'Synthetic demo defaults; not official AICTE deadlines.'} Alerts are computed when this page loads; scheduled notifications are not enabled.</span></div>
             {loadingCompliance && !compliance ? <div className="table-state"><div className="loading-line"/><div className="loading-line"/><span>Calculating expiry overview…</span></div> : compliance ? <>
               <div className="compliance-metrics">
