@@ -54,6 +54,31 @@ export type EventVerification = {
   first_invalid_sequence: number | null
 }
 
+export type ApplicationEvidence = {
+  id: string
+  application_id: string
+  title: string
+  category: string
+  reference_number: string | null
+  issued_on: string | null
+  expires_on: string | null
+  policy_key: string | null
+  notes: string | null
+  created_by_user_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type EvidenceCreate = {
+  title: string
+  category: string
+  reference_number?: string
+  issued_on?: string
+  expires_on?: string
+  policy_key?: string
+  notes?: string
+}
+
 export type PolicyVersion = {
   id: string
   policy_key: string
@@ -116,6 +141,8 @@ export const api = {
   applicationEvents: (id: string) => request<ApplicationEvent[]>(`/applications/${encodeURIComponent(id)}/events`),
   verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
+  evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
+  registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
   transitionApplication: (id: string, targetStatus: string, expectedStatus: string, reason?: string) =>
     request<Application>(`/applications/${encodeURIComponent(id)}/transitions`, {
       method: 'POST',
