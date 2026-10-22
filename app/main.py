@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.db.session import get_engine
+from app.api.v1.router import api_router
 
 settings = get_settings()
 app = FastAPI(
@@ -17,6 +18,8 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 app.add_middleware(
     CORSMiddleware,
