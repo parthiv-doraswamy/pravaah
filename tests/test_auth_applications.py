@@ -210,3 +210,31 @@ def test_regional_officer_cannot_access_applications_outside_assigned_region(api
     assert detail.status_code == 404
     timeline = client.get(f"/api/v1/applications/{foreign_case_id}/events", headers=headers)
     assert timeline.status_code == 404
+
+
+
+def test_application_title_is_trimmed_and_whitespace_only_title_is_rejected(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    create_institution_user(
+        session_factory, email="trim-title@example.test", code="TRIM-TITLE", name="Trim Title"
+    )
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "trim-title@example.test", "password": "Test-password-123!"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    created = client.post(
+        "/api/v1/applications",
+        headers=headers,
+        json={"title": "   Trimmed application title   "},
+    )
+    assert created.status_code == 201
+    assert created.json()["title"] == "Trimmed application title"
+
+    invalid = client.post(
+        "/api/v1/applications",
+        headers=headers,
+        json={"title": "   "},
+    )
+    assert invalid.status_code == 422
