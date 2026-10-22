@@ -5,12 +5,16 @@ in the API security layer. Role and scope checks remain server-side.
 """
 
 import uuid
+from typing import TYPE_CHECKING
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.workflow import ApplicationEvent
 
 
 def utc_now() -> datetime:
