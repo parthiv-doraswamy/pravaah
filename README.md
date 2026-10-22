@@ -6,7 +6,7 @@ PRAVAAH is a prototype for transparent, policy-driven approval workflow coordina
 
 ## Project status
 
-**Status: Foundation setup.** Features are implemented incrementally and are not considered complete until verified by tests.
+**Status: Backend foundation committed; automated verification is configured.** Database connectivity, initial registry models, migrations, local Compose setup, and CI tests are in place. Execution results still need to be confirmed by CI or a local run.
 
 ## Planned stack
 
@@ -67,7 +67,13 @@ The layout will be established incrementally so every commit remains understanda
 
 ## Getting started
 
-Setup commands will be added once the pinned backend, frontend, and database configuration has been created and tested. See `docs/` as the implementation progresses.
+Start the local API and PostgreSQL database with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Then open `http://localhost:8000/docs`. For test and migration details, see [`docs/backend-development.md`](docs/backend-development.md). This command has been configured in the repository but has not yet been executed in this session.
 
 ## Disclaimer
 
