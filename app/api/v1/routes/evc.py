@@ -12,7 +12,7 @@ from app.auth.dependencies import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evc_visit import EVCVisit
-from app.schemas.evc import EVCVisitCreate, EVCVisitResponse, EVCVisitStatusUpdate
+from app.schemas.evc import EVCReportUpdate, EVCVisitCreate, EVCVisitResponse, EVCVisitStatusUpdate
 from app.services.workflow import append_event
 
 router = APIRouter()
@@ -130,6 +130,61 @@ def update_visit_status(
         actor_user_id=user.id,
         reason=f"EVC visit {visit.status}",
         metadata={"visit_id": str(visit.id)},
+    )
+    db.commit()
+    db.refresh(visit)
+    return visit
+
+
+
+@router.put(
+    "/visits/{visit_id}/report",
+    response_model=EVCVisitResponse,
+    summary="Save or submit a structured EVC visit report",
+)
+def save_visit_report(
+    visit_id: UUID,
+    payload: EVCReportUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*_SCHEDULER_ROLES)),
+) -> EVCVisit:
+    visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
+    visit = db.scalar(
+        select(EVCVisit).where(
+            EVCVisit.id == visit_id,
+            EVCVisit.application_id.in_(select(visible_ids.c.id)),
+        )
+    )
+    if visit is None:
+        raise HTTPException(status_code=404, detail="EVC visit not found")
+    if visit.status != "completed":
+        raise HTTPException(status_code=409, detail="A report can only be recorded after the visit is completed")
+    if visit.report_status == "submitted":
+        raise HTTPException(status_code=409, detail="Submitted EVC reports are immutable")
+    visit.checklist = [item.model_dump() for item in payload.checklist]
+    visit.outcome_summary = payload.outcome_summary.strip()
+    visit.observations = payload.observations.strip() if payload.observations else None
+    previous_report_status = visit.report_status
+    if payload.submit:
+        visit.report_status = "submitted"
+        visit.report_submitted_at = datetime.now(UTC)
+    else:
+        visit.report_status = "draft"
+    db.flush()
+    append_event(
+        db,
+        application_id=visit.application_id,
+        event_type="evc_report_submitted" if payload.submit else "evc_report_saved",
+        from_status=previous_report_status,
+        to_status=visit.report_status,
+        actor_user_id=user.id,
+        reason="EVC outcome report submitted" if payload.submit else "EVC outcome report draft saved",
+        metadata={
+            "visit_id": str(visit.id),
+            "report_status": visit.report_status,
+            "checklist_items": len(visit.checklist or []),
+            "needs_attention": sum(1 for item in visit.checklist or [] if item.get("result") == "needs_attention"),
+        },
     )
     db.commit()
     db.refresh(visit)
