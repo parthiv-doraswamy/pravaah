@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type PolicyVersion, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type EventVerification, type PolicyVersion, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies'
 
@@ -33,6 +33,9 @@ function App() {
   const [view, setView] = useState<View>('overview')
   const [applications, setApplications] = useState<Application[]>([])
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null)
+  const [caseEvents, setCaseEvents] = useState<ApplicationEvent[]>([])
+  const [eventVerification, setEventVerification] = useState<EventVerification | null>(null)
+  const [loadingTimeline, setLoadingTimeline] = useState(false)
   const [policies, setPolicies] = useState<PolicyVersion[]>([])
   const [loadingPolicies, setLoadingPolicies] = useState(false)
   const [total, setTotal] = useState(0)
@@ -88,6 +91,19 @@ function App() {
   useEffect(() => {
     if (user) void loadApplications()
   }, [user, loadApplications])
+
+  useEffect(() => {
+    if (!user || view !== 'detail' || !selectedApplication) return
+    let cancelled = false
+    setLoadingTimeline(true)
+    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id)])
+      .then(([events, verification]) => {
+        if (!cancelled) { setCaseEvents(events); setEventVerification(verification) }
+      })
+      .catch(error => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load the audit timeline.') })
+      .finally(() => { if (!cancelled) setLoadingTimeline(false) })
+    return () => { cancelled = true }
+  }, [user, view, selectedApplication])
 
   const loadPolicies = useCallback(async () => {
     if (!user) return
@@ -242,7 +258,11 @@ function App() {
           {view === 'detail' && selectedApplication && <section className="panel case-detail-panel">
             <div className="panel-heading"><div><div className="eyebrow">APPLICATION {selectedApplication.application_number}</div><h2>{selectedApplication.title}</h2><p>{selectedApplication.summary || 'No summary provided.'}</p></div><button className="secondary-button small-button" onClick={() => setView('applications')}><ArrowRight size={15}/> Back to register</button></div>
             <div className="case-detail-facts"><div><span>Current status</span><strong>{statusLabels[selectedApplication.status] || selectedApplication.status.replaceAll('_', ' ')}</strong></div><div><span>Created</span><strong>{formatDate(selectedApplication.created_at)}</strong></div><div><span>Last updated</span><strong>{formatDate(selectedApplication.updated_at)}</strong></div><div><span>Submitted</span><strong>{selectedApplication.submitted_at ? formatDate(selectedApplication.submitted_at) : 'Not submitted'}</strong></div><div><span>Institution reference</span><strong>{selectedApplication.institution_id.slice(0, 8).toUpperCase()}</strong></div></div>
-          </section>}
+            <div className="audit-summary"><ShieldCheck size={19}/><div><strong>{loadingTimeline ? 'Verifying audit history…' : eventVerification?.valid ? 'Audit chain verified' : eventVerification ? 'Audit chain check failed' : 'Audit verification unavailable'}</strong><p>{eventVerification ? eventVerification.event_count + ' events checked. ' + (eventVerification.valid ? 'No tampering detected in the stored chain.' : 'First invalid sequence: ' + eventVerification.first_invalid_sequence + '.') : 'The event chain is tamper-evident and is not an external trust anchor.'}</p></div></div>
+            <div className="detail-timeline"><div className="panel-heading"><div><h2>Application timeline</h2><p>Chronological record of application events</p></div><span>{caseEvents.length} events</span></div>
+              {loadingTimeline ? <div className="table-state"><div className="loading-line"/><span>Loading events…</span></div> : caseEvents.length === 0 ? <div className="empty-state"><strong>No timeline events</strong><p>Events appear here as the application progresses.</p></div> : <div className="event-list">{caseEvents.map(event => <div className="event-row" key={event.id}><div className="event-dot"/><div><strong>{event.event_type.replaceAll('_', ' ')}</strong><p>{event.from_status ? (statusLabels[event.from_status] || event.from_status.replaceAll('_', ' ')) + ' → ' + (statusLabels[event.to_status || ''] || (event.to_status || '').replaceAll('_', ' ')) : 'Initial record created'}{event.reason ? ' · ' + event.reason : ''}</p><span>{new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(event.occurred_at))}</span><details><summary>Event hash</summary><code>{event.event_hash}</code></details></div></div>)}</div>}
+            </div>
+          </section>
 
           {view === 'policies' && <section className="policy-page">
             <div className="policy-intro"><div className="policy-intro-icon"><BookOpenCheck size={22}/></div><div><div className="eyebrow">GOVERNANCE & TRACEABILITY</div><h1>Policy registry</h1><p>Versioned policy records used by this prototype. Each entry shows its stated source and configured rules.</p></div><button className="secondary-button small-button" onClick={() => void loadPolicies()} disabled={loadingPolicies}><Activity size={15} className={loadingPolicies ? 'spin' : ''}/> Refresh</button></div>
