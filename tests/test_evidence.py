@@ -83,7 +83,7 @@ def test_evidence_expiry_cannot_precede_issue_date(api_client_and_sessions):
 
 def test_evidence_cannot_be_read_outside_institution_scope(api_client_and_sessions):
     client, session_factory = api_client_and_sessions
-    headers_a, application_a, _ = _login_and_case(client, session_factory, "003")
+    headers_a, _, _ = _login_and_case(client, session_factory, "003")
     _, application_b, _ = _login_and_case(client, session_factory, "004")
     response = client.get(f"/api/v1/applications/{application_b}/evidence", headers=headers_a)
     assert response.status_code == 404
