@@ -183,37 +183,37 @@ async def upload_evidence_attachment(
 
     storage_key = f"{uuid4().hex}{suffix}"
     destination = _attachment_path(storage_key)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(contents)
-    attachment = EvidenceAttachment(
-        application_id=application_id,
-        evidence_id=evidence_id,
-        original_filename=filename[:255],
-        storage_key=storage_key,
-        content_type=content_type,
-        size_bytes=len(contents),
-        sha256_hex=hashlib.sha256(contents).hexdigest(),
-        uploaded_by_user_id=user.id,
-    )
-    db.add(attachment)
-    db.flush()
-    append_event(
-        db,
-        application_id=application_id,
-        event_type="evidence_file_uploaded",
-        from_status=evidence.category,
-        to_status=evidence.category,
-        actor_user_id=user.id,
-        reason="Evidence attachment uploaded",
-        metadata={
-            "evidence_id": str(evidence_id),
-            "attachment_id": str(attachment.id),
-            "filename": attachment.original_filename,
-            "size_bytes": attachment.size_bytes,
-            "sha256": attachment.sha256_hex,
-        },
-    )
     try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(contents)
+        attachment = EvidenceAttachment(
+            application_id=application_id,
+            evidence_id=evidence_id,
+            original_filename=filename[:255],
+            storage_key=storage_key,
+            content_type=content_type,
+            size_bytes=len(contents),
+            sha256_hex=hashlib.sha256(contents).hexdigest(),
+            uploaded_by_user_id=user.id,
+        )
+        db.add(attachment)
+        db.flush()
+        append_event(
+            db,
+            application_id=application_id,
+            event_type="evidence_file_uploaded",
+            from_status=evidence.category,
+            to_status=evidence.category,
+            actor_user_id=user.id,
+            reason="Evidence attachment uploaded",
+            metadata={
+                "evidence_id": str(evidence_id),
+                "attachment_id": str(attachment.id),
+                "filename": attachment.original_filename,
+                "size_bytes": attachment.size_bytes,
+                "sha256": attachment.sha256_hex,
+            },
+        )
         db.commit()
         db.refresh(attachment)
     except Exception:
