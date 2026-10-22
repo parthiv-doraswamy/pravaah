@@ -32,6 +32,41 @@ export type TokenResponse = {
   expires_in: number
 }
 
+export type ApplicationEvent = {
+  id: string
+  application_id: string
+  sequence: number
+  event_type: string
+  from_status: string | null
+  to_status: string | null
+  actor_user_id: string | null
+  reason: string | null
+  event_metadata: Record<string, unknown>
+  occurred_at: string
+  previous_hash: string
+  event_hash: string
+}
+
+export type EventVerification = {
+  application_id: string
+  valid: boolean
+  event_count: number
+  first_invalid_sequence: number | null
+}
+
+export type PolicyVersion = {
+  id: string
+  policy_key: string
+  version: number
+  title: string
+  description: string
+  effective_from: string
+  rules: Record<string, unknown>
+  source_label: string
+  is_active: boolean
+  created_at: string
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '')
 const TOKEN_KEY = 'pravaah_access_token'
 
@@ -78,4 +113,12 @@ export const api = {
   createApplication: (title: string, summary?: string) => request<Application>('/applications', {
     method: 'POST', body: JSON.stringify({ title, summary: summary || null }),
   }),
+  applicationEvents: (id: string) => request<ApplicationEvent[]>(`/applications/${encodeURIComponent(id)}/events`),
+  verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
+  policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
+  transitionApplication: (id: string, targetStatus: string, expectedStatus: string, reason?: string) =>
+    request<Application>(`/applications/${encodeURIComponent(id)}/transitions`, {
+      method: 'POST',
+      body: JSON.stringify({ target_status: targetStatus, expected_status: expectedStatus, reason: reason || null }),
+    }),
 }
