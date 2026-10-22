@@ -29,7 +29,7 @@ class Institution(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    code: Mapped[str] = mapped_column(String(40), nullable=False, unique=True, index=True)
+    code: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
     region_code: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
@@ -43,7 +43,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[str] = mapped_column(String(60), nullable=False, default="institution_user", index=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
@@ -62,7 +62,7 @@ class Application(Base):
     __tablename__ = "applications"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    application_number: Mapped[str] = mapped_column(String(60), nullable=False, unique=True, index=True)
+    application_number: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     status: Mapped[str] = mapped_column(String(60), nullable=False, default="draft", index=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
