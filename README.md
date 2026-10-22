@@ -6,7 +6,7 @@ PRAVAAH is a prototype for transparent, policy-driven approval workflow coordina
 
 ## Project status
 
-**Status: Backend foundation, workflow timeline, evidence expiry overview, and in-app notification queue committed.** Login, scoped application records, guarded transitions, evidence metadata, computed expiry alerts, idempotent in-app notification records, and notification read state are implemented. Build and test execution still need confirmation by CI or a local run.
+**Status: Scheduled expiry monitoring, compliance escalation records, and optional SMTP retry delivery are implemented in code.** The Compose worker scans expiry dates, creates idempotent reminders, opens escalations for long-expired evidence, and attempts email delivery only when SMTP is configured. Build and test execution still need confirmation by CI or a local run.
 
 ## Planned stack
 
@@ -27,7 +27,8 @@ Exact versions will be pinned and verified as the project is bootstrapped.
 - Append-only application event timeline with SHA-256 hash-chain verification
 - Evidence metadata registry with optional policy linkage and expiry-date visibility (file uploads are not implemented yet)
 - Scoped compliance overview with computed expiry alerts and synthetic 30/7/1-day warning windows
-- Idempotent in-app expiry notifications, recipient-only read state, and audit timeline events (email/SMS delivery and scheduled retries are not implemented yet)
+- Scheduled expiry scans and persistent compliance escalations with audit events
+- Optional SMTP delivery with persistent attempt logs and capped exponential retry backoff; email remains deferred when SMTP is not configured
 - Application intake, scrutiny, returns, and resubmissions
 - Policy-to-Proof case timeline
 - Deadline provenance, undertakings, and compliance evidence
