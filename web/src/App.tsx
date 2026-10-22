@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance'
 
@@ -50,6 +50,8 @@ function App() {
   const [transitionBusy, setTransitionBusy] = useState(false)
   const [compliance, setCompliance] = useState<ComplianceOverview | null>(null)
   const [loadingCompliance, setLoadingCompliance] = useState(false)
+  const [escalations, setEscalations] = useState<ComplianceEscalation[]>([])
+  const [loadingEscalations, setLoadingEscalations] = useState(false)
   const [notifications, setNotifications] = useState<NotificationRecord[]>([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
@@ -157,6 +159,26 @@ function App() {
       setNotice(error instanceof Error ? error.message : 'Could not queue expiry notifications.')
     } finally {
       setQueueingNotifications(false)
+    }
+  }
+
+  const loadEscalations = useCallback(async () => {
+    if (!user) return
+    setLoadingEscalations(true)
+    try { setEscalations(await api.escalations()) }
+    catch (error) { setNotice(error instanceof Error ? error.message : 'Could not load compliance escalations.') }
+    finally { setLoadingEscalations(false) }
+  }, [user])
+
+  useEffect(() => { if (user && view === 'compliance') void loadEscalations() }, [user, view, loadEscalations])
+
+  async function handleResolveEscalation(escalation: ComplianceEscalation) {
+    try {
+      await api.resolveEscalation(escalation.id)
+      setEscalations(items => items.filter(item => item.id !== escalation.id))
+      setNotice('Compliance escalation resolved and recorded in the audit timeline.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not resolve this escalation.')
     }
   }
 
@@ -423,7 +445,7 @@ function App() {
           {view === 'compliance' && <section className="compliance-page">
             <div className="compliance-intro"><div className="compliance-intro-icon"><CalendarClock size={22}/></div><div><div className="eyebrow">DEADLINE INTELLIGENCE</div><h2>Evidence expiry overview</h2><p>Computed from recorded evidence dates for applications visible to your account.</p></div><button className="secondary-button small-button" onClick={() => void loadCompliance()} disabled={loadingCompliance}><Activity size={15} className={loadingCompliance ? 'spin' : ''}/> Refresh</button></div>
             {['scrutiny_officer', 'regional_officer', 'bureau_officer', 'policy_admin', 'system_admin', 'evc_coordinator'].includes(user.role) && <div className="compliance-queue-action"><div><strong>Notification queue</strong><span>Generate in-app reminders for evidence due within 30 days. Duplicate alerts are skipped.</span></div><button className="primary-button small-button" onClick={() => void handleQueueNotifications()} disabled={queueingNotifications}>{queueingNotifications ? <Activity size={15} className="spin"/> : <Bell size={15}/>} Queue expiry alerts</button></div>}
-            <div className="compliance-disclaimer"><AlertTriangle size={18}/><span><strong>Illustrative warning windows.</strong> {compliance?.warning_source || 'Synthetic demo defaults; not official AICTE deadlines.'} Alerts are computed when this page loads; scheduled notifications are not enabled.</span></div>
+            <div className="compliance-disclaimer"><AlertTriangle size={18}/><span><strong>Illustrative warning windows.</strong> {compliance?.warning_source || 'Synthetic demo defaults; not official AICTE deadlines.'} Alerts are computed from recorded dates; the Compose worker scans periodically. Warning and escalation thresholds are synthetic demo defaults.</span></div>
             {loadingCompliance && !compliance ? <div className="table-state"><div className="loading-line"/><div className="loading-line"/><span>Calculating expiry overview…</span></div> : compliance ? <>
               <div className="compliance-metrics">
                 <MetricCard icon={<FileCheck2 size={19}/>} label="Evidence records" value={String(compliance.total_evidence)} note="Metadata records in scope" tone="blue" trendIcon={<Activity size={14}/>} />
@@ -434,6 +456,9 @@ function App() {
               <div className="compliance-summary-strip"><span>As of <strong>{formatDate(compliance.as_of)}</strong></span><span>Warning windows <strong>{compliance.warning_windows_days.join(' / ')} days</strong></span><span>Due within 30 days <strong>{compliance.due_within_30_days + compliance.due_within_7_days + compliance.due_within_1_day}</strong></span></div>
               <div className="panel compliance-alerts"><div className="panel-heading"><div><h2>Expiry alerts</h2><p>Expired items and evidence due within the next 30 days</p></div><span className="evidence-count">{compliance.alerts.length} alerts</span></div>
                 {compliance.alerts.length === 0 ? <div className="empty-state"><div className="empty-icon"><ShieldCheck size={22}/></div><strong>No upcoming expiry alerts</strong><p>No expired or near-expiry evidence was found in the records currently visible to you.</p></div> : <div className="compliance-alert-list">{compliance.alerts.map(alert => <article className="compliance-alert-row" key={alert.evidence_id}><div className={'compliance-alert-icon ' + alert.severity}><AlertTriangle size={18}/></div><div className="compliance-alert-main"><div className="compliance-alert-title"><strong>{alert.title}</strong><span className={'evidence-expiry ' + (alert.severity === 'expired' ? 'expired' : alert.severity === 'urgent' || alert.severity === 'warning' ? 'expiring' : 'valid')}>{alert.severity === 'expired' ? 'Expired' : alert.days_remaining === 0 ? 'Expires today' : alert.days_remaining === 1 ? '1 day left' : alert.days_remaining + ' days left'}</span></div><p>{alert.application_number} · {alert.application_title}</p><span className="evidence-date">{alert.category.replaceAll('_', ' ')}{alert.policy_key ? ' · ' + alert.policy_key : ''} · Expires {formatDate(alert.expires_on)}</span></div><button className="secondary-button small-button" onClick={() => void openAlertApplication(alert.application_id)}>Open case <ArrowRight size={14}/></button></article>)}</div>}
+              </div>
+              <div className="panel compliance-alerts"><div className="panel-heading"><div><h2>Open escalations</h2><p>Evidence expired beyond the configured demo threshold</p></div><span className="evidence-count">{escalations.length} open</span></div>
+                {loadingEscalations && escalations.length === 0 ? <div className="table-state"><span>Loading escalations…</span></div> : escalations.length === 0 ? <div className="empty-state"><div className="empty-icon"><ShieldCheck size={22}/></div><strong>No open escalations</strong><p>Long-overdue evidence will appear here after the scheduled worker scan.</p></div> : <div className="compliance-alert-list">{escalations.map(item => <article className="compliance-alert-row" key={item.id}><div className="compliance-alert-icon expired"><AlertTriangle size={18}/></div><div className="compliance-alert-main"><div className="compliance-alert-title"><strong>{item.summary}</strong><span className="evidence-expiry expired">Open · High</span></div><span className="evidence-date">Raised {formatDate(item.triggered_at)}</span></div><button className="secondary-button small-button" onClick={() => void openAlertApplication(item.application_id)}>Open case <ArrowRight size={14}/></button>{['scrutiny_officer', 'regional_officer', 'bureau_officer', 'policy_admin', 'system_admin', 'evc_coordinator'].includes(user.role) && <button className="secondary-button small-button" onClick={() => void handleResolveEscalation(item)}>Resolve <Check size={14}/></button>}</article>)}</div>}
               </div>
             </> : <div className="empty-state"><strong>Compliance overview unavailable</strong><p>Refresh the page after checking the API connection.</p><button className="secondary-button" onClick={() => void loadCompliance()}>Try again</button></div>}
           </section>}
