@@ -79,3 +79,14 @@ Expiry badges in the frontend are a display-level warning based on the recorded 
 `GET /api/v1/compliance/overview` returns a summary for evidence attached to applications visible to the authenticated user. It counts expired records, records due within one day, within seven days, within thirty days, and records without an expiry date. The response includes alert rows for expired and near-expiry records and the date on which the summary was computed.
 
 The warning windows `[30, 7, 1]` are synthetic demo defaults, not official AICTE rules. This endpoint computes the overview when requested; it does not send notifications, schedule background jobs, or create escalation records. Institution and regional scoping are applied server-side.
+
+
+## In-app notification queue
+
+The `notification_records` table stores recipient-scoped in-app notifications, a unique deduplication key, severity, read timestamp, and delivery bookkeeping (`delivery_status`, attempt count, retry ceiling, next-attempt timestamp, and last error). The notification API provides:
+
+- `GET /api/v1/notifications?unread_only=true` — list notifications belonging to the authenticated user.
+- `POST /api/v1/notifications/{notification_id}/read` — mark only the recipient's notification as read.
+- `POST /api/v1/notifications/queue-expiry` — reviewer/admin roles can queue idempotent expiry reminders for institution users associated with visible cases.
+
+Newly queued expiry reminders add an event to the application's tamper-evident timeline. The dedupe key is based on the evidence record, expiry date, severity window, and recipient; repeated queue runs skip existing reminders. Records are immediately available in the in-app notification center. External email/SMS transport, a scheduled worker, retry execution, and escalation policies are not implemented yet; retry-related columns are groundwork for that later worker. Warning windows remain synthetic demo defaults, not official AICTE deadlines.
