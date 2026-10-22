@@ -30,7 +30,7 @@ python -m pytest
 ruff check app tests migrations
 ```
 
-The initial health tests stub the database readiness function, so they do not require a running PostgreSQL instance. A real readiness request requires the configured database to be reachable.
+The initial health tests stub the database readiness function, so they do not require a running PostgreSQL instance. A real readiness request requires the configured database to be reachable. Authentication uses Argon2 password hashes and signed, short-lived bearer tokens. Set a unique `JWT_SECRET_KEY` (at least 32 characters) for any environment other than development or test; never commit real secrets.
 
 ## Apply migrations manually
 
