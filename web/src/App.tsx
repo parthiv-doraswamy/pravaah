@@ -36,6 +36,8 @@ function App() {
   const [caseEvents, setCaseEvents] = useState<ApplicationEvent[]>([])
   const [eventVerification, setEventVerification] = useState<EventVerification | null>(null)
   const [loadingTimeline, setLoadingTimeline] = useState(false)
+  const [transitionReason, setTransitionReason] = useState('')
+  const [transitionBusy, setTransitionBusy] = useState(false)
   const [policies, setPolicies] = useState<PolicyVersion[]>([])
   const [loadingPolicies, setLoadingPolicies] = useState(false)
   const [total, setTotal] = useState(0)
@@ -167,6 +169,23 @@ function App() {
     }
   }
 
+  async function handleTransition(targetStatus: string) {
+    if (!selectedApplication) return
+    setTransitionBusy(true)
+    setNotice('')
+    try {
+      const updated = await api.transitionApplication(selectedApplication.id, targetStatus, selectedApplication.status, transitionReason.trim() || undefined)
+      setSelectedApplication(updated)
+      setTransitionReason('')
+      await loadApplications()
+      setNotice('Status updated. The action is recorded in the application timeline.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not update application status.')
+    } finally {
+      setTransitionBusy(false)
+    }
+  }
+
   if (booting) return <div className="boot-screen"><div className="brand-mark"><Activity size={24} /></div><span>Preparing your workspace…</span></div>
 
   if (!user) return (
@@ -258,6 +277,20 @@ function App() {
           {view === 'detail' && selectedApplication && <section className="panel case-detail-panel">
             <div className="panel-heading"><div><div className="eyebrow">APPLICATION {selectedApplication.application_number}</div><h2>{selectedApplication.title}</h2><p>{selectedApplication.summary || 'No summary provided.'}</p></div><button className="secondary-button small-button" onClick={() => setView('applications')}><ArrowRight size={15}/> Back to register</button></div>
             <div className="case-detail-facts"><div><span>Current status</span><strong>{statusLabels[selectedApplication.status] || selectedApplication.status.replaceAll('_', ' ')}</strong></div><div><span>Created</span><strong>{formatDate(selectedApplication.created_at)}</strong></div><div><span>Last updated</span><strong>{formatDate(selectedApplication.updated_at)}</strong></div><div><span>Submitted</span><strong>{selectedApplication.submitted_at ? formatDate(selectedApplication.submitted_at) : 'Not submitted'}</strong></div><div><span>Institution reference</span><strong>{selectedApplication.institution_id.slice(0, 8).toUpperCase()}</strong></div></div>
+            {(() => {
+              const actionMap: Record<string, { roles: string[]; targets: string[] }> = {
+                draft: { roles: ['institution_user'], targets: ['submitted'] },
+                submitted: { roles: ['scrutiny_officer'], targets: ['under_scrutiny', 'clarification_requested'] },
+                clarification_requested: { roles: ['institution_user'], targets: ['submitted'] },
+                under_scrutiny: { roles: ['scrutiny_officer'], targets: ['clarification_requested', 'recommended_for_approval', 'returned'] },
+                returned: { roles: ['institution_user'], targets: ['submitted'] },
+                recommended_for_approval: { roles: ['bureau_officer'], targets: ['pending_authority_decision'] },
+                pending_authority_decision: { roles: ['competent_authority'], targets: ['approved', 'rejected'] },
+              }
+              const config = actionMap[selectedApplication.status]
+              const targets = config && config.roles.includes(user.role) ? config.targets : []
+              return <div className="detail-actions"><div><h3>Workflow actions</h3><p>Actions are limited by role and current status, and rechecked by the server.</p></div>{targets.length ? <><textarea value={transitionReason} onChange={event => setTransitionReason(event.target.value)} rows={2} maxLength={2000} placeholder="Optional note for the audit trail"/><div className="detail-action-buttons">{targets.map(target => <button key={target} className={target === 'rejected' || target === 'returned' ? 'secondary-button' : 'primary-button'} disabled={transitionBusy} onClick={() => void handleTransition(target)}>{transitionBusy ? 'Saving…' : target.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</button>)}</div></> : <p className="no-detail-actions">No action is available for your role in this status.</p>}</div>
+            })()}
             <div className="audit-summary"><ShieldCheck size={19}/><div><strong>{loadingTimeline ? 'Verifying audit history…' : eventVerification?.valid ? 'Audit chain verified' : eventVerification ? 'Audit chain check failed' : 'Audit verification unavailable'}</strong><p>{eventVerification ? eventVerification.event_count + ' events checked. ' + (eventVerification.valid ? 'No tampering detected in the stored chain.' : 'First invalid sequence: ' + eventVerification.first_invalid_sequence + '.') : 'The event chain is tamper-evident and is not an external trust anchor.'}</p></div></div>
             <div className="detail-timeline"><div className="panel-heading"><div><h2>Application timeline</h2><p>Chronological record of application events</p></div><span>{caseEvents.length} events</span></div>
               {loadingTimeline ? <div className="table-state"><div className="loading-line"/><span>Loading events…</span></div> : caseEvents.length === 0 ? <div className="empty-state"><strong>No timeline events</strong><p>Events appear here as the application progresses.</p></div> : <div className="event-list">{caseEvents.map(event => <div className="event-row" key={event.id}><div className="event-dot"/><div><strong>{event.event_type.replaceAll('_', ' ')}</strong><p>{event.from_status ? (statusLabels[event.from_status] || event.from_status.replaceAll('_', ' ')) + ' → ' + (statusLabels[event.to_status || ''] || (event.to_status || '').replaceAll('_', ' ')) : 'Initial record created'}{event.reason ? ' · ' + event.reason : ''}</p><span>{new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(event.occurred_at))}</span><details><summary>Event hash</summary><code>{event.event_hash}</code></details></div></div>)}</div>}
