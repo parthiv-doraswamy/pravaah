@@ -95,3 +95,100 @@ def test_event_chain_detects_tampering(api_client_and_sessions):
         assert verify_event_chain(events) == (True, None)
         events[0].reason = "altered after the fact"
         assert verify_event_chain(events) == (False, 1)
+
+
+
+def test_full_application_lifecycle_enforces_roles_and_verifies_timeline(api_client_and_sessions):
+    """Exercise the real HTTP workflow from draft through human approval."""
+    from app.auth.security import hash_password
+
+    client, session_factory = api_client_and_sessions
+    password = "Lifecycle-Test-123!"
+    with session_factory() as db:
+        institution = Institution(
+            name="Lifecycle Test College", code="WF-LIFECYCLE", region_code="REGION-A"
+        )
+        db.add(institution)
+        db.flush()
+        roles = ("institution_user", "scrutiny_officer", "bureau_officer", "competent_authority")
+        users = {}
+        for role in roles:
+            user = User(
+                email=f"lifecycle-{role}@example.test",
+                full_name=f"Lifecycle {role}",
+                role=role,
+                password_hash=hash_password(password),
+                institution_id=institution.id,
+            )
+            db.add(user)
+            users[role] = user
+        application = Application(
+            application_number="PVH-WF-LIFECYCLE",
+            title="Lifecycle integration test",
+            status="draft",
+            institution_id=institution.id,
+        )
+        db.add(application)
+        db.commit()
+        application_id = application.id
+        emails = {role: user.email for role, user in users.items()}
+
+    tokens = {}
+    for role, email in emails.items():
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+        assert login.status_code == 200
+        tokens[role] = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    def transition(role: str, expected: str, target: str, status_code: int = 200):
+        response = client.post(
+            f"/api/v1/applications/{application_id}/transitions",
+            headers=tokens[role],
+            json={
+                "expected_status": expected,
+                "target_status": target,
+                "reason": f"Integration test: {role}",
+            },
+        )
+        assert response.status_code == status_code, response.text
+        if status_code == 200:
+            assert response.json()["status"] == target
+        return response
+
+    # An institution user cannot bypass scrutiny, even with a valid token.
+    transition("institution_user", "draft", "approved", status_code=409)
+    # Each valid transition must be made by the role assigned to that stage.
+    transition("institution_user", "draft", "submitted")
+    transition("bureau_officer", "submitted", "pending_authority_decision", status_code=409)
+    transition("scrutiny_officer", "submitted", "under_scrutiny")
+    transition("scrutiny_officer", "under_scrutiny", "clarification_requested")
+    transition("institution_user", "clarification_requested", "submitted")
+    transition("scrutiny_officer", "submitted", "under_scrutiny")
+    transition("scrutiny_officer", "under_scrutiny", "recommended_for_approval")
+    transition("bureau_officer", "recommended_for_approval", "pending_authority_decision")
+    transition("competent_authority", "pending_authority_decision", "approved")
+
+    timeline = client.get(
+        f"/api/v1/applications/{application_id}/events",
+        headers=tokens["competent_authority"],
+    )
+    assert timeline.status_code == 200
+    assert len(timeline.json()) == 8
+    assert [event["sequence"] for event in timeline.json()] == list(range(1, 9))
+
+    verification = client.get(
+        f"/api/v1/applications/{application_id}/events/verify",
+        headers=tokens["competent_authority"],
+    )
+    assert verification.status_code == 200
+    assert verification.json()["valid"] is True
+    assert verification.json()["event_count"] == 8
+
+    final_case = client.get(
+        f"/api/v1/applications/{application_id}",
+        headers=tokens["institution_user"],
+    )
+    assert final_case.status_code == 200
+    assert final_case.json()["status"] == "approved"
