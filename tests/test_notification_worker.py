@@ -137,3 +137,16 @@ def test_escalation_can_be_listed_and_resolved_by_reviewer(api_client_and_sessio
     assert resolved.status_code == 200
     assert resolved.json()["status"] == "resolved"
     assert resolved.json()["resolved_at"] is not None
+
+    resolved_again = client.post(
+        f"/api/v1/compliance/escalations/{escalation_id}/resolve", headers=headers
+    )
+    assert resolved_again.status_code == 200
+    assert resolved_again.json()["status"] == "resolved"
+    with session_factory() as db:
+        assert (
+            db.query(ApplicationEvent)
+            .filter_by(event_type="compliance_escalation_resolved")
+            .count()
+            == 1
+        )
