@@ -11,6 +11,7 @@ from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.core import Application, Institution, User
 from app.schemas.applications import ApplicationCreate, ApplicationPage, ApplicationResponse
+from app.services.workflow import append_event
 
 router = APIRouter()
 _REVIEW_ROLES = {
@@ -84,6 +85,11 @@ def create_application(
         institution_id=user.institution_id,
     )
     db.add(application)
+    db.flush()
+    append_event(
+        db, application_id=application.id, event_type="application_created",
+        from_status=None, to_status="draft", actor_user_id=user.id,
+    )
     db.commit()
     db.refresh(application)
     return application
