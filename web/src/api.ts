@@ -158,6 +158,19 @@ export type NotificationQueueResult = {
   detail: string
 }
 
+export type EVCVisit = {
+  id: string
+  application_id: string
+  scheduled_for: string
+  mode: 'onsite' | 'virtual'
+  location: string | null
+  notes: string | null
+  status: 'scheduled' | 'completed' | 'cancelled'
+  created_by_user_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '')
 const TOKEN_KEY = 'pravaah_access_token'
 
@@ -216,6 +229,15 @@ export const api = {
   queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
+  evcVisits: (options: { status?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (options.status) params.set('status_filter', options.status)
+    return request<EVCVisit[]>(`/evc/visits${params.size ? `?${params.toString()}` : ''}`)
+  },
+  scheduleEVCVisit: (payload: { application_id: string; scheduled_for: string; mode: 'onsite' | 'virtual'; location?: string; notes?: string }) =>
+    request<EVCVisit>('/evc/visits', { method: 'POST', body: JSON.stringify(payload) }),
+  updateEVCVisitStatus: (id: string, status: 'completed' | 'cancelled') =>
+    request<EVCVisit>(`/evc/visits/${encodeURIComponent(id)}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
   transitionApplication: (id: string, targetStatus: string, expectedStatus: string, reason?: string) =>
     request<Application>(`/applications/${encodeURIComponent(id)}/transitions`, {
       method: 'POST',
