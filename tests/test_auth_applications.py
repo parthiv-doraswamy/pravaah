@@ -238,3 +238,31 @@ def test_application_title_is_trimmed_and_whitespace_only_title_is_rejected(api_
         json={"title": "   "},
     )
     assert invalid.status_code == 422
+
+
+
+def test_inactive_user_cannot_login_or_reuse_existing_token(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    _, user_id = create_institution_user(
+        session_factory,
+        email="deactivated@example.test",
+        code="DEACTIVATED",
+        name="Deactivated User",
+    )
+    login_payload = {"email": "deactivated@example.test", "password": "Test-password-123!"}
+    login = client.post("/api/v1/auth/login", json=login_payload)
+    assert login.status_code == 200
+    token_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    assert client.get("/api/v1/auth/me", headers=token_headers).status_code == 200
+
+    with session_factory() as db:
+        user = db.get(User, user_id)
+        user.is_active = False
+        db.commit()
+
+    inactive_login = client.post("/api/v1/auth/login", json=login_payload)
+    assert inactive_login.status_code == 401
+    assert inactive_login.json()["detail"] == "Invalid email or password"
+
+    stale_token_profile = client.get("/api/v1/auth/me", headers=token_headers)
+    assert stale_token_profile.status_code == 401
