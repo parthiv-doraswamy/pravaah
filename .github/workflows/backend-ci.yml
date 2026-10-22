@@ -70,6 +70,8 @@ jobs:
         run: python -m scripts.seed_demo
       - name: Verify demo seed is idempotent
         run: python -m scripts.seed_demo
+      - name: Verify expiry reminders, escalation, and audit chain on PostgreSQL
+        run: python -m scripts.postgres_worker_smoke
       - name: Run one notification worker cycle
         run: python -m scripts.notification_worker --once
 
