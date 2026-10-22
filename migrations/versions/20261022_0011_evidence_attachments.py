@@ -6,7 +6,6 @@ Revises: 20261022_0010
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 revision = "20261022_0011"
 down_revision = "20261022_0010"
