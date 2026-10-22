@@ -69,6 +69,18 @@ export type ApplicationEvidence = {
   updated_at: string
 }
 
+export type EvidenceAttachment = {
+  id: string
+  application_id: string
+  evidence_id: string
+  original_filename: string
+  content_type: string
+  size_bytes: number
+  sha256_hex: string
+  uploaded_by_user_id: string | null
+  created_at: string
+}
+
 export type EvidenceCreate = {
   title: string
   category: string
@@ -235,6 +247,30 @@ export const api = {
   queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
+  evidenceAttachments: (applicationId: string, evidenceId: string) =>
+    request<EvidenceAttachment[]>(`/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/attachments`),
+  uploadEvidenceAttachment: async (applicationId: string, evidenceId: string, file: File): Promise<EvidenceAttachment> => {
+    const token = getToken()
+    const form = new FormData()
+    form.append('file', file)
+    const response = await fetch(`${API_BASE}/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/attachments`, {
+      method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form,
+    })
+    if (!response.ok) {
+      let message = `Upload failed (${response.status})`
+      try { const payload = await response.json(); if (typeof payload.detail === 'string') message = payload.detail } catch { /* Keep HTTP status. */ }
+      throw new Error(message)
+    }
+    return response.json() as Promise<EvidenceAttachment>
+  },
+  downloadEvidenceAttachment: async (applicationId: string, evidenceId: string, attachmentId: string): Promise<Blob> => {
+    const token = getToken()
+    const response = await fetch(`${API_BASE}/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/attachments/${encodeURIComponent(attachmentId)}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!response.ok) throw new Error(`Download failed (${response.status})`)
+    return response.blob()
+  },
   evcVisits: (options: { status?: string } = {}) => {
     const params = new URLSearchParams()
     if (options.status) params.set('status_filter', options.status)
