@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from typing import Callable
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.core import User
@@ -63,16 +63,16 @@ def process_due_notifications(
     delivery_enabled = smtp_is_configured() if enabled is None else enabled
     if not delivery_enabled:
         due_count = db.scalar(
-            select(NotificationRecord.id).where(
+            select(func.count(NotificationRecord.id)).where(
                 NotificationRecord.delivery_status == "pending",
                 or_(NotificationRecord.next_attempt_at.is_(None), NotificationRecord.next_attempt_at <= run_at),
-            ).limit(1)
+            )
         )
         return {
             "attempted": 0,
             "sent": 0,
             "failed": 0,
-            "deferred": int(due_count is not None),
+            "deferred": int(due_count or 0),
             "detail": "SMTP is not configured; in-app notifications remain available and email attempts are deferred.",
         }
 
