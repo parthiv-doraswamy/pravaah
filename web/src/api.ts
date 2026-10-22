@@ -271,9 +271,10 @@ export const api = {
     if (!response.ok) throw new Error(`Download failed (${response.status})`)
     return response.blob()
   },
-  evcVisits: (options: { status?: string } = {}) => {
+  evcVisits: (options: { status?: string; applicationId?: string } = {}) => {
     const params = new URLSearchParams()
     if (options.status) params.set('status_filter', options.status)
+    if (options.applicationId) params.set('application_id', options.applicationId)
     return request<EVCVisit[]>(`/evc/visits${params.size ? `?${params.toString()}` : ''}`)
   },
   scheduleEVCVisit: (payload: { application_id: string; scheduled_for: string; mode: 'onsite' | 'virtual'; location?: string; notes?: string }) =>
