@@ -162,6 +162,7 @@ export const api = {
     if (options.status) params.set('status', options.status)
     return request<ApplicationPage>(`/applications?${params.toString()}`)
   },
+  application: (id: string) => request<Application>(`/applications/${encodeURIComponent(id)}`),
   createApplication: (title: string, summary?: string) => request<Application>('/applications', {
     method: 'POST', body: JSON.stringify({ title, summary: summary || null }),
   }),
