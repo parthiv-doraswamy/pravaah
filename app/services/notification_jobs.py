@@ -141,7 +141,8 @@ def run_expiry_monitoring(db: Session, today: date | None = None) -> dict[str, i
     db.commit()
     return {
         "as_of": run_date.isoformat(),
-        "evidence_records_checked": len(rows),
+        # Rows are joined to institution users; count each evidence record only once.
+        "evidence_records_checked": len({str(evidence.id) for evidence, _, _ in rows}),
         "notifications_queued": queued,
         "existing_notifications_skipped": skipped,
         "escalations_opened": escalated,
