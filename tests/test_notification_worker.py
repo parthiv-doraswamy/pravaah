@@ -47,6 +47,7 @@ def test_worker_queues_expiry_alerts_and_escalates_long_expired_evidence(api_cli
     with session_factory() as db:
         result = run_expiry_monitoring(db, today=today)
     assert result["notifications_queued"] == 6
+    assert result["evidence_records_checked"] == 2
     assert result["escalations_opened"] == 1
 
     with session_factory() as db:
@@ -85,6 +86,7 @@ def test_worker_is_idempotent_across_repeated_scans(api_client_and_sessions):
         second = run_expiry_monitoring(db, today=today)
 
     assert first["notifications_queued"] == 2
+    assert first["evidence_records_checked"] == 1
     assert first["escalations_opened"] == 1
     assert second["notifications_queued"] == 0
     assert second["escalations_opened"] == 0
