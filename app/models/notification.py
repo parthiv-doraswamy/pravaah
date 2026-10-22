@@ -29,6 +29,7 @@ class NotificationRecord(Base):
     evidence_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("application_evidence.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    dedupe_key: Mapped[str] = mapped_column(String(240), nullable=False)
     notification_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
