@@ -82,6 +82,9 @@ function App() {
   const [reportChecklist, setReportChecklist] = useState<EVCChecklistItem[]>(EVC_CHECKLIST.map(item => ({ ...item, result: 'pass', notes: '' })))
   const [reportOutcome, setReportOutcome] = useState('')
   const [reportObservations, setReportObservations] = useState('')
+  const [reportEvidence, setReportEvidence] = useState<ApplicationEvidence[]>([])
+  const [reportEvidenceIds, setReportEvidenceIds] = useState<string[]>([])
+  const [loadingReportEvidence, setLoadingReportEvidence] = useState(false)
   const [savingEvcReport, setSavingEvcReport] = useState(false)
   const [total, setTotal] = useState(0)
   const [loadingCases, setLoadingCases] = useState(false)
@@ -301,7 +304,7 @@ function App() {
     }
   }
 
-  function openEvcReport(visit: EVCVisit) {
+  async function openEvcReport(visit: EVCVisit) {
     setReportVisitId(visit.id)
     setReportChecklist(EVC_CHECKLIST.map(item => {
       const existing = visit.checklist?.find(entry => entry.key === item.key)
@@ -309,6 +312,16 @@ function App() {
     }))
     setReportOutcome(visit.outcome_summary || '')
     setReportObservations(visit.observations || '')
+    setReportEvidenceIds(visit.linked_evidence_ids || [])
+    setLoadingReportEvidence(true)
+    try {
+      setReportEvidence(await api.evidence(visit.application_id))
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not load application evidence.')
+      setReportEvidence([])
+    } finally {
+      setLoadingReportEvidence(false)
+    }
   }
 
   async function handleSaveEvcReport(event: FormEvent, submit: boolean) {
@@ -321,6 +334,7 @@ function App() {
         checklist: reportChecklist.map(item => ({ ...item, notes: item.notes.trim() || null })),
         outcome_summary: reportOutcome.trim(),
         ...(reportObservations.trim() ? { observations: reportObservations.trim() } : {}),
+        evidence_ids: reportEvidenceIds,
         submit,
       })
       setReportVisitId(null)
@@ -606,6 +620,15 @@ function App() {
               const locked = evcVisits.find(entry => entry.id === reportVisitId)?.report_status === 'submitted'
               return <div className="evc-checklist-row" key={item.key}><div className="evc-checklist-label"><span>{String(index + 1).padStart(2, '0')}</span><strong>{item.label}</strong></div><select aria-label={item.label + ' result'} value={item.result} disabled={locked} onChange={event => setReportChecklist(items => items.map(entry => entry.key === item.key ? { ...entry, result: event.target.value as EVCChecklistItem['result'] } : entry))}><option value="pass">Pass</option><option value="needs_attention">Needs attention</option><option value="not_applicable">Not applicable</option></select><input aria-label={item.label + ' notes'} value={item.notes} disabled={locked} onChange={event => setReportChecklist(items => items.map(entry => entry.key === item.key ? { ...entry, notes: event.target.value } : entry))} placeholder={item.result === 'needs_attention' ? 'Explain this finding (required)' : 'Optional observation'} maxLength={1500}/></div>
             })}
+            <div className="evc-report-evidence">
+              <div className="evc-report-evidence-heading"><div><strong>Supporting evidence</strong><span>Link registered evidence from this application to substantiate the visit report.</span></div><span className="evc-evidence-count">{reportEvidenceIds.length} linked</span></div>
+              {loadingReportEvidence ? <p className="evc-evidence-empty">Loading application evidence…</p> : reportEvidence.length === 0 ? <p className="evc-evidence-empty">No evidence metadata registered for this application yet. Add evidence from the application detail page first.</p> : <div className="evc-evidence-options">{reportEvidence.map(item => {
+                const locked = evcVisits.find(entry => entry.id === reportVisitId)?.report_status === 'submitted'
+                const selected = reportEvidenceIds.includes(item.id)
+                return <label className="evc-evidence-option" key={item.id}><input type="checkbox" checked={selected} disabled={locked} onChange={event => setReportEvidenceIds(ids => event.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))}/><span className="evc-evidence-option-main"><strong>{item.title}</strong><small>{item.category.replaceAll('_', ' ')}{item.reference_number ? ' · Ref ' + item.reference_number : ''}</small></span><span className="evc-evidence-date">{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'No expiry date'}</span></label>
+              })}</div>}
+              <p className="evc-evidence-footnote">Prototype links reference evidence records only; binary file uploads and storage are not implemented.</p>
+            </div>
             <label className="evc-report-field">Outcome summary<textarea value={reportOutcome} disabled={evcVisits.find(item => item.id === reportVisitId)?.report_status === 'submitted'} onChange={event => setReportOutcome(event.target.value)} minLength={10} maxLength={4000} rows={3} placeholder="Summarize the visit observations and outcome…" required/></label>
             <label className="evc-report-field">Additional observations<textarea value={reportObservations} disabled={evcVisits.find(item => item.id === reportVisitId)?.report_status === 'submitted'} onChange={event => setReportObservations(event.target.value)} maxLength={10000} rows={3} placeholder="Optional follow-up actions or supporting context"/></label>
             {evcVisits.find(item => item.id === reportVisitId)?.report_status !== 'submitted' && <div className="evc-form-actions"><span>Submission locks the report. Saves and submissions are recorded in the application timeline.</span><div className="evc-report-buttons"><button type="button" className="secondary-button" disabled={savingEvcReport || reportOutcome.trim().length < 10} onClick={() => void handleSaveEvcReport({ preventDefault: () => {} } as FormEvent, false)}>{savingEvcReport ? 'Saving…' : 'Save draft'}</button><button type="button" className="primary-button" disabled={savingEvcReport || reportOutcome.trim().length < 10 || reportChecklist.some(item => item.result === 'needs_attention' && !item.notes.trim())} onClick={() => void handleSaveEvcReport({ preventDefault: () => {} } as FormEvent, true)}>{savingEvcReport ? 'Submitting…' : 'Submit report'}</button></div></div>}
