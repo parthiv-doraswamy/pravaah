@@ -47,7 +47,7 @@ def health_live() -> dict[str, str]:
 
 
 @app.get("/health/ready", tags=["health"], summary="Readiness check")
-def health_ready() -> dict[str, str]:
+def health_ready() -> dict[str, object]:
     """Report readiness only when the configured PostgreSQL connection is responsive."""
     if not database_is_ready():
         raise HTTPException(
