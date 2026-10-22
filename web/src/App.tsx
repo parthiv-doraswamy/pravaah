@@ -8,6 +8,15 @@ import {
 import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
+type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
+const EVC_CHECKLIST = [
+  { key: 'governance', label: 'Governance and approvals' },
+  { key: 'infrastructure', label: 'Infrastructure readiness' },
+  { key: 'faculty', label: 'Faculty availability' },
+  { key: 'curriculum', label: 'Curriculum and programme' },
+  { key: 'safety', label: 'Safety and accessibility' },
+  { key: 'records', label: 'Records and evidence' },
+] as const
 
 const statusLabels: Record<string, string> = {
   draft: 'Draft', submitted: 'Submitted', under_scrutiny: 'Under scrutiny', scrutiny: 'Under scrutiny',
@@ -69,6 +78,11 @@ function App() {
   const [evcLocation, setEvcLocation] = useState('')
   const [evcNotes, setEvcNotes] = useState('')
   const [updatingEvcVisitId, setUpdatingEvcVisitId] = useState<string | null>(null)
+  const [reportVisitId, setReportVisitId] = useState<string | null>(null)
+  const [reportChecklist, setReportChecklist] = useState<EVCChecklistItem[]>(EVC_CHECKLIST.map(item => ({ ...item, result: 'pass', notes: '' })))
+  const [reportOutcome, setReportOutcome] = useState('')
+  const [reportObservations, setReportObservations] = useState('')
+  const [savingEvcReport, setSavingEvcReport] = useState(false)
   const [total, setTotal] = useState(0)
   const [loadingCases, setLoadingCases] = useState(false)
   const [query, setQuery] = useState('')
@@ -284,6 +298,38 @@ function App() {
       setNotice(error instanceof Error ? error.message : 'Could not update EVC visit.')
     } finally {
       setUpdatingEvcVisitId(null)
+    }
+  }
+
+  function openEvcReport(visit: EVCVisit) {
+    setReportVisitId(visit.id)
+    setReportChecklist(EVC_CHECKLIST.map(item => {
+      const existing = visit.checklist?.find(entry => entry.key === item.key)
+      return { ...item, result: existing?.result || 'pass', notes: existing?.notes || '' }
+    }))
+    setReportOutcome(visit.outcome_summary || '')
+    setReportObservations(visit.observations || '')
+  }
+
+  async function handleSaveEvcReport(event: FormEvent, submit: boolean) {
+    event.preventDefault()
+    if (!reportVisitId) return
+    setSavingEvcReport(true)
+    setNotice('')
+    try {
+      await api.saveEVCReport(reportVisitId, {
+        checklist: reportChecklist.map(item => ({ ...item, notes: item.notes.trim() || null })),
+        outcome_summary: reportOutcome.trim(),
+        ...(reportObservations.trim() ? { observations: reportObservations.trim() } : {}),
+        submit,
+      })
+      setReportVisitId(null)
+      await loadEvcVisits()
+      setNotice(submit ? 'EVC outcome report submitted and locked in the audit timeline.' : 'EVC outcome report draft saved.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not save the EVC report.')
+    } finally {
+      setSavingEvcReport(false)
     }
   }
 
