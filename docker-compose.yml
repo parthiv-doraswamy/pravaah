@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pravaah
+      POSTGRES_USER: pravaah
+      POSTGRES_PASSWORD: pravaah
+    ports:
+      - "5432:5432"
+    volumes:
+      - pravaah_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pravaah -d pravaah"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://pravaah:pravaah@db:5432/pravaah
+      CORS_ORIGINS: http://localhost:5173
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+
+volumes:
+  pravaah_postgres_data:
