@@ -2,7 +2,7 @@
 
 ## Status
 
-This document describes the planned architecture, not a claim that all modules already exist. The initial repository foundation contains the FastAPI entry point, environment-backed settings, and health smoke tests. Database-backed readiness, authentication, workflow rules, and UI pages are future implementation work.
+This document describes the planned architecture, not a claim that all modules already exist. The repository foundation contains the FastAPI entry point, environment-backed settings, SQLAlchemy engine/session setup, initial registry models, an Alembic baseline migration, Docker Compose services, and health smoke tests. Authentication, workflow rules, and UI pages remain future implementation work.
 
 ## System boundaries
 
@@ -33,15 +33,16 @@ Each policy version should be validated and immutable after publication. Case ev
 ## Current API contract
 
 - `GET /health/live`: process liveness only.
-- `GET /health/ready`: placeholder readiness response until dependency checks are implemented.
+- `GET /health/ready`: checks whether a simple query succeeds against the configured PostgreSQL database; returns HTTP 503 if the database is unavailable.
 
-The readiness endpoint must be upgraded to check actual dependencies before being used as a deployment health gate.
+The current readiness endpoint checks PostgreSQL only. Add checks for other required dependencies when those dependencies are introduced before using it as a deployment health gate.
 
 ## Planned delivery order
 
 1. Requirements and demo policy assumptions.
 2. Backend package, settings, health endpoints, and smoke tests.
-3. Database models, migrations, seed data, and scoped identity foundation.
+3. Database models, initial migration, local Compose setup, and CI checks.
+4. Seed data, scoped identity foundation, and server-enforced authorization.
 4. Application registry and guarded workflow engine.
 5. Deadline, compliance, and document services.
 6. Outbox, worker, notifications, and audit verification.
