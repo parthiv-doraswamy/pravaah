@@ -1,18 +1,25 @@
 """Contracts for application evidence metadata and expiry tracking."""
 
 from datetime import date, datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+
+EvidenceTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=240)]
+EvidenceCategory = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)]
+EvidenceReference = Annotated[str, StringConstraints(strip_whitespace=True, max_length=160)]
+EvidencePolicyKey = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 
 
 class EvidenceCreate(BaseModel):
-    title: str = Field(min_length=2, max_length=240, strip_whitespace=True)
-    category: str = Field(min_length=2, max_length=80, strip_whitespace=True)
-    reference_number: str | None = Field(default=None, max_length=160, strip_whitespace=True)
+    title: EvidenceTitle
+    category: EvidenceCategory
+    reference_number: EvidenceReference | None = None
     issued_on: date | None = None
     expires_on: date | None = None
-    policy_key: str | None = Field(default=None, max_length=100, strip_whitespace=True)
+    policy_key: EvidencePolicyKey | None = None
     notes: str | None = Field(default=None, max_length=3000)
 
 
