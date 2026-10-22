@@ -140,3 +140,23 @@
 .evc-visit-actions .secondary-button{display:flex;align-items:center;gap:6px}
 .evc-cancel-button{color:#9b4444}
 @media(max-width:750px){.evc-intro{align-items:flex-start;flex-wrap:wrap}.evc-intro>div:nth-child(2){flex-basis:calc(100% - 65px)}.evc-intro>button{margin-left:63px}.evc-form-grid{grid-template-columns:1fr}.evc-notes-field{grid-column:auto}.evc-schedule-panel{padding:15px}.evc-schedule-panel .panel-heading{align-items:flex-start;flex-direction:column}.evc-visit-card{align-items:flex-start;flex-wrap:wrap}.evc-visit-main{flex-basis:calc(100% - 84px)}.evc-visit-actions{flex-direction:row;flex-wrap:wrap;margin-left:83px}.evc-form-actions{align-items:flex-start;flex-direction:column}.evc-form-actions .primary-button{width:100%}}
+
+
+/* EVC structured report and checklist */
+.evc-report-form{padding:21px;border:1px solid #dfe6f1;border-radius:16px;background:#fff;box-shadow:0 6px 22px rgba(25,39,67,.035)}
+.evc-report-form .evc-form-heading{margin-bottom:17px}
+.evc-checklist-row{display:grid;grid-template-columns:minmax(175px,1.1fr) minmax(135px,.6fr) minmax(180px,1fr);align-items:center;gap:12px;padding:12px 0;border-top:1px solid #edf0f5}
+.evc-checklist-label{display:flex;align-items:center;gap:10px;min-width:0}
+.evc-checklist-label>span{display:grid;place-items:center;flex:0 0 27px;width:27px;height:27px;border-radius:8px;background:#f0f3f9;color:#6e7b90;font-size:10px;font-weight:800}
+.evc-checklist-label strong{color:#34445c;font-size:11px;line-height:1.5}
+.evc-checklist-row select,.evc-checklist-row input,.evc-report-field textarea{box-sizing:border-box;width:100%;min-width:0;padding:10px 11px;border:1px solid #dfe5ef;border-radius:9px;background:#fff;color:var(--ink,#17253a);font:inherit;font-size:11px}
+.evc-checklist-row input:focus,.evc-checklist-row select:focus,.evc-report-field textarea:focus{outline:2px solid #d9e3ff;border-color:#8fa7f0}
+.evc-report-field{display:flex;flex-direction:column;gap:7px;margin-top:15px;color:#53627a;font-size:11px;font-weight:700}
+.evc-report-field textarea{resize:vertical;line-height:1.6}
+.evc-report-locked{margin:14px 0 0;color:#18734d;font-size:11px}
+.evc-report-buttons{display:flex;gap:9px}
+.evc-visit-actions .evc-status.not_started{background:#f0f2f5;color:#6b7280}
+.evc-visit-actions .evc-status.draft{background:#fff3d9;color:#8a5a08}
+.evc-visit-actions .evc-status.submitted{background:#e8f7ef;color:#18734d}
+@media(max-width:800px){.evc-checklist-row{grid-template-columns:1fr 1fr}.evc-checklist-label{grid-column:1/-1}.evc-report-form{padding:15px}}
+@media(max-width:520px){.evc-checklist-row{grid-template-columns:1fr}.evc-checklist-label{grid-column:auto}.evc-report-buttons{width:100%;flex-direction:column}.evc-report-buttons button{width:100%}}
