@@ -136,6 +136,7 @@ def run_expiry_monitoring(db: Session, today: date | None = None) -> dict[str, i
                     next_attempt_at=now,
                 ))
                 db.flush()
+                queued += 1
 
     db.commit()
     return {
