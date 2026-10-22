@@ -90,3 +90,47 @@ def test_worker_is_idempotent_across_repeated_scans(api_client_and_sessions):
     with session_factory() as db:
         assert db.query(ComplianceEscalation).count() == 1
         assert db.query(NotificationRecord).count() == 2
+
+
+def test_escalation_can_be_listed_and_resolved_by_reviewer(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    today = date(2026, 10, 22)
+    with session_factory() as db:
+        institution = Institution(name="Escalation Review College", code="WK-004", region_code="REGION-W")
+        db.add(institution)
+        db.flush()
+        owner = User(
+            email="escalation-owner@example.test", full_name="Institution Owner",
+            role="institution_user", institution_id=institution.id,
+        )
+        reviewer = User(
+            email="escalation-reviewer@example.test", full_name="Review Officer",
+            role="scrutiny_officer", password_hash=__import__("app.auth.security", fromlist=["hash_password"]).hash_password("Test-password-123!"),
+        )
+        case = Application(
+            application_number="PVH-WK-004", title="Escalation review case",
+            status="under_scrutiny", institution_id=institution.id,
+        )
+        db.add_all([owner, reviewer, case])
+        db.flush()
+        db.add(ApplicationEvidence(
+            application_id=case.id, title="Overdue certificate", category="other",
+            expires_on=today - timedelta(days=10),
+        ))
+        db.commit()
+
+    with session_factory() as db:
+        run_expiry_monitoring(db, today=today)
+    login = client.post("/api/v1/auth/login", json={
+        "email": "escalation-reviewer@example.test", "password": "Test-password-123!",
+    })
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    listed = client.get("/api/v1/compliance/escalations", headers=headers)
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    escalation_id = listed.json()[0]["id"]
+    resolved = client.post(f"/api/v1/compliance/escalations/{escalation_id}/resolve", headers=headers)
+    assert resolved.status_code == 200
+    assert resolved.json()["status"] == "resolved"
+    assert resolved.json()["resolved_at"] is not None
