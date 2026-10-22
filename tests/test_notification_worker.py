@@ -150,3 +150,59 @@ def test_escalation_can_be_listed_and_resolved_by_reviewer(api_client_and_sessio
             .count()
             == 1
         )
+
+
+
+def test_institution_user_cannot_resolve_compliance_escalation(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    today = date(2026, 10, 22)
+    with session_factory() as db:
+        institution = Institution(name="Escalation Permission College", code="WK-005", region_code="REGION-W")
+        db.add(institution)
+        db.flush()
+        owner = User(
+            email="escalation-permission-owner@example.test",
+            full_name="Institution Owner",
+            role="institution_user",
+            password_hash=hash_password("Test-password-123!"),
+            institution_id=institution.id,
+        )
+        case = Application(
+            application_number="PVH-WK-005",
+            title="Escalation permission case",
+            status="under_scrutiny",
+            institution_id=institution.id,
+        )
+        db.add_all([owner, case])
+        db.flush()
+        db.add(ApplicationEvidence(
+            application_id=case.id,
+            title="Overdue certificate",
+            category="other",
+            expires_on=today - timedelta(days=10),
+        ))
+        db.commit()
+
+    with session_factory() as db:
+        run_expiry_monitoring(db, today=today)
+    login = client.post("/api/v1/auth/login", json={
+        "email": "escalation-permission-owner@example.test",
+        "password": "Test-password-123!",
+    })
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    listed = client.get("/api/v1/compliance/escalations", headers=headers)
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    escalation_id = listed.json()[0]["id"]
+    response = client.post(
+        f"/api/v1/compliance/escalations/{escalation_id}/resolve",
+        headers=headers,
+    )
+    assert response.status_code == 403
+    with session_factory() as db:
+        escalation = db.query(ComplianceEscalation).filter_by(id=escalation_id).one()
+        assert escalation.status == "open"
+        assert db.query(ApplicationEvent).filter_by(
+            event_type="compliance_escalation_resolved"
+        ).count() == 0
