@@ -1,12 +1,16 @@
 """Workflow, policy version, and tamper-evident application event models."""
 
 import uuid
+from typing import TYPE_CHECKING
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, Uuid, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.core import Application
 
 
 def utc_now() -> datetime:
