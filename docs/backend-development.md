@@ -65,13 +65,16 @@ Demo policy values and target durations are illustrative, not official AICTE rul
 
 ## Evidence metadata and expiry tracking
 
-The `application_evidence` table stores evidence title, category, reference number, optional issue/expiry dates, optional policy key, notes, creator, and timestamps. It stores metadata only: this slice does not upload binary files or provide a document download endpoint.
+The `application_evidence` table stores evidence title, category, reference number, optional issue/expiry dates, optional policy key, notes, creator, and timestamps. The `evidence_attachments` table stores metadata for private files persisted outside the database under `EVIDENCE_STORAGE_DIR` (default `./var/uploads`; Docker Compose mounts a named volume at `/data/uploads`). The default upload cap is 10 MiB and can be changed with `EVIDENCE_MAX_UPLOAD_BYTES`.
 
 - `GET /api/v1/applications/{id}/evidence` lists evidence metadata for an application visible to the current user.
 - `POST /api/v1/applications/{id}/evidence` registers metadata for a visible application. Writer roles are checked server-side, and expiry cannot precede issue date.
 - Each registration appends an `evidence_registered` event to the application's hash chain so the record is included in audit verification.
+- `GET /api/v1/applications/{id}/evidence/{evidence_id}/attachments` lists file metadata for a registered evidence item.
+- `POST /api/v1/applications/{id}/evidence/{evidence_id}/attachments` accepts a multipart field named `file`; writer roles are checked server-side. Only PDF, PNG, and JPEG extensions with matching file signatures are accepted. The server generates a random storage key, computes SHA-256, enforces the configured byte limit, and records an `evidence_file_uploaded` audit event.
+- `GET /api/v1/applications/{id}/evidence/{evidence_id}/attachments/{attachment_id}/download` streams a private attachment only after application-scope and evidence-link checks. Download responses include `X-Content-Type-Options: nosniff` and private no-store caching.
 
-Expiry badges in the frontend are a display-level warning based on the recorded date; they are not a legal determination, a scheduled reminder, or a substitute for a verified policy engine. Actual file storage, malware scanning, content-type validation, secure downloads, and automated renewal notifications remain future work.
+This prototype does not yet perform malware scanning, PDF/image content sanitization, virus quarantine, external object storage, or file-retention cleanup. File-signature checks are not a guarantee that a file is safe. Expiry badges are display-level warnings, not legal determinations or a substitute for a verified policy engine.
 
 
 ## Compliance overview and expiry warnings
