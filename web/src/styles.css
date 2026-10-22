@@ -213,6 +213,9 @@
 .dashboard-operations-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:20px}
 .dashboard-ops-panel{min-width:0;padding:20px}
 .dashboard-work-mark{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;border-radius:9px;background:#edf4ff;color:#315fc0}
+.dashboard-work-mark.priority-high{background:#fff2e8;color:#b65b27}
+.dashboard-work-tag{align-self:flex-start;padding:4px 7px;border-radius:5px;background:#eef3ff;color:#4968ac;font-size:9px;font-weight:750;letter-spacing:.25px}
+.dashboard-work-tag.priority-high{background:#fff1e8;color:#a94e20}
 .dashboard-work-panel .dashboard-compact-row{align-items:flex-start}
 .dashboard-work-panel .dashboard-compact-copy{gap:5px}
 .dashboard-work-panel .dashboard-compact-copy small+small{white-space:normal;line-height:1.45}
