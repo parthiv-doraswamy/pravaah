@@ -33,7 +33,11 @@ def main() -> None:
         try:
             logger.info("Expiry monitoring result: %s", run_once())
         except (SQLAlchemyError, OSError, RuntimeError):
-            logger.exception("Expiry monitoring failed; the next scheduled run will retry")
+            logger.exception("Expiry monitoring failed")
+            if args.once:
+                raise
+            time.sleep(min(interval, 15))
+            continue
         if args.once:
             return
         time.sleep(interval)
