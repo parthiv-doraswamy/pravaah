@@ -5,9 +5,9 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type PolicyVersion, type User } from './api'
 
-type View = 'overview' | 'applications'
+type View = 'overview' | 'applications' | 'policies'
 
 const statusLabels: Record<string, string> = {
   draft: 'Draft', submitted: 'Submitted', scrutiny: 'Under scrutiny', re_scrutiny: 'Re-scrutiny',
@@ -29,6 +29,8 @@ function App() {
   const [booting, setBooting] = useState(true)
   const [view, setView] = useState<View>('overview')
   const [applications, setApplications] = useState<Application[]>([])
+  const [policies, setPolicies] = useState<PolicyVersion[]>([])
+  const [loadingPolicies, setLoadingPolicies] = useState(false)
   const [total, setTotal] = useState(0)
   const [loadingCases, setLoadingCases] = useState(false)
   const [query, setQuery] = useState('')
@@ -82,6 +84,23 @@ function App() {
   useEffect(() => {
     if (user) void loadApplications()
   }, [user, loadApplications])
+
+  const loadPolicies = useCallback(async () => {
+    if (!user) return
+    setLoadingPolicies(true)
+    setNotice('')
+    try {
+      setPolicies(await api.policies())
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not load policy registry.')
+    } finally {
+      setLoadingPolicies(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (user && view === 'policies') void loadPolicies()
+  }, [user, view, loadPolicies])
 
   const metrics = useMemo(() => {
     const active = applications.filter(item => !['completed', 'withdrawn'].includes(item.status)).length
@@ -165,6 +184,7 @@ function App() {
   const navItems = [
     { id: 'overview' as const, label: 'Overview', icon: LayoutDashboard },
     { id: 'applications' as const, label: 'Applications', icon: ClipboardList, count: total },
+    { id: 'policies' as const, label: 'Policy registry', icon: BookOpenCheck },
   ]
   const roleLabel = user.role.replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase())
 
@@ -180,13 +200,13 @@ function App() {
         </nav>
         <div className="nav-label nav-label-spaced">OPERATIONS</div>
         <div className="nav-item nav-disabled"><CalendarClock size={18} /><span>Deadlines & compliance</span><span className="soon-dot" /></div>
-        <div className="nav-item nav-disabled"><BookOpenCheck size={18} /><span>Policy registry</span><span className="soon-dot" /></div>
+        <button className="nav-item" onClick={() => { setView("policies"); setMobileNav(false) }}><BookOpenCheck size={18} /><span>Policy registry</span></button>
         <div className="nav-item nav-disabled"><FileCheck2 size={18} /><span>Evidence & documents</span><span className="soon-dot" /></div>
         <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><CircleHelp size={18} /></div><strong>Need a hand?</strong><p>Explore the workflow guide as modules become available.</p><span>Prototype workspace</span></div><div className="sidebar-foot"><span className="online-dot" /> API-connected workspace <span className="version">v0.1</span></div></div>
       </aside>
 
       <main className="main-panel">
-        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : 'Applications'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><button className="icon-button notification-button" aria-label="Notifications" title="Notifications are not implemented yet"><Bell size={18} /><i /></button><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
+        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><button className="icon-button notification-button" aria-label="Notifications" title="Notifications are not implemented yet"><Bell size={18} /><i /></button><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
 
         <div className="content-area">
           <div className="page-heading"><div><div className="eyebrow">YOUR WORKSPACE <span className="heading-dot">·</span> {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div><h1>{view === 'overview' ? 'Good to see you, ' + user.full_name.split(' ')[0] + '.' : 'Applications'}</h1><p>{view === 'overview' ? 'Here’s the latest view of your approval workflow.' : 'Search, review and manage your application records.'}</p></div><div className="heading-actions"><button className="secondary-button" onClick={() => void loadApplications()} disabled={loadingCases}><Activity size={16} className={loadingCases ? 'spin' : ''} /> Refresh</button>{user.role === 'institution_user' && <button className="primary-button" onClick={() => setCreateOpen(true)}><Plus size={17} /> New application</button>}</div></div>
@@ -213,6 +233,19 @@ function App() {
           </>}
 
           {view === 'applications' && <section className="panel applications-panel"><div className="panel-heading list-panel-heading"><div><h2>Application register</h2><p>{total} record{total===1?'':'s'} visible within your access scope</p></div><div className="register-actions"><button className="secondary-button small-button" onClick={() => void loadApplications()} disabled={loadingCases}><Activity size={15} className={loadingCases?'spin':''}/> Refresh</button>{user.role==='institution_user'&&<button className="primary-button small-button" onClick={() => setCreateOpen(true)}><Plus size={16}/> New application</button>}</div></div><div className="filter-row"><div className="search-field"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void loadApplications()}} placeholder="Search by title or application ID" aria-label="Search applications"/><kbd>Enter</kbd></div><div className="filter-select-wrap"><Filter size={16}/><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} aria-label="Filter by status"><option value="">All statuses</option>{Object.entries(statusLabels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select><ChevronDown size={14}/></div><button className="secondary-button filter-apply" onClick={()=>void loadApplications()}><SlidersHorizontal size={15}/> Apply filters</button></div><ApplicationTable applications={applications} loading={loadingCases} onOpen={() => {}} /><div className="table-footer"><span>Showing <strong>{applications.length}</strong> of <strong>{total}</strong> matching records</span><span className="footer-scope"><ShieldCheck size={14}/> Access-scoped results</span></div></section>}
+
+
+          {view === 'policies' && <section className="policy-page">
+            <div className="policy-intro"><div className="policy-intro-icon"><BookOpenCheck size={22}/></div><div><div className="eyebrow">GOVERNANCE & TRACEABILITY</div><h1>Policy registry</h1><p>Versioned policy records used by this prototype. Each entry shows its stated source and configured rules.</p></div><button className="secondary-button small-button" onClick={() => void loadPolicies()} disabled={loadingPolicies}><Activity size={15} className={loadingPolicies ? 'spin' : ''}/> Refresh</button></div>
+            <div className="policy-disclaimer"><ShieldCheck size={18}/><span><strong>Demo policy data.</strong> These entries are synthetic examples, not official AICTE regulations or legal guidance.</span></div>
+            {loadingPolicies && policies.length === 0 ? <div className="table-state"><div className="loading-line"/><div className="loading-line"/><span>Loading policy registry…</span></div> : policies.length === 0 ? <div className="empty-state"><div className="empty-icon"><BookOpenCheck size={22}/></div><strong>No policy versions published</strong><p>Policy versions will appear here when the demo seed data is loaded.</p></div> : <div className="policy-grid">{policies.map(policy => <article className="policy-card" key={policy.id}>
+              <div className="policy-card-top"><span className="policy-key">{policy.policy_key.replaceAll('_', ' ')}</span><span className={policy.is_active ? 'policy-active' : 'policy-inactive'}>{policy.is_active ? 'Active' : 'Archived'}</span></div>
+              <h2>{policy.title}</h2><p className="policy-description">{policy.description}</p>
+              <div className="policy-meta"><span>Version <strong>v{policy.version}</strong></span><span>Effective <strong>{formatDate(policy.effective_from)}</strong></span></div>
+              <div className="policy-rules"><div><strong>Configured rules</strong><span>{Object.keys(policy.rules || {}).length} rule field{Object.keys(policy.rules || {}).length === 1 ? '' : 's'}</span></div><pre>{JSON.stringify(policy.rules, null, 2)}</pre></div>
+              <div className="policy-source"><FileCheck2 size={15}/><span>{policy.source_label}</span></div>
+            </article>)}</div>}
+          </section>}
 
           <footer className="page-footer"><span>PRAVAAH <span className="footer-sep">/</span> Independent prototype for workflow transparency</span><span>Demo data only <span className="footer-sep">·</span> No official AICTE integration</span></footer>
         </div>
