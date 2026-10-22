@@ -160,3 +160,23 @@
 .evc-visit-actions .evc-status.submitted{background:#e8f7ef;color:#18734d}
 @media(max-width:800px){.evc-checklist-row{grid-template-columns:1fr 1fr}.evc-checklist-label{grid-column:1/-1}.evc-report-form{padding:15px}}
 @media(max-width:520px){.evc-checklist-row{grid-template-columns:1fr}.evc-checklist-label{grid-column:auto}.evc-report-buttons{width:100%;flex-direction:column}.evc-report-buttons button{width:100%}}
+
+
+/* Supporting evidence linked to EVC outcome reports */
+.evc-report-evidence{margin-top:19px;padding:16px;border:1px solid #e1e7f0;border-radius:13px;background:#f9fbfe}
+.evc-report-evidence-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.evc-report-evidence-heading>div{display:flex;flex-direction:column;gap:4px}
+.evc-report-evidence-heading strong{font-size:12px;color:#263852}
+.evc-report-evidence-heading span:not(.evc-evidence-count){font-size:10px;line-height:1.5;color:#748197}
+.evc-evidence-count{flex-shrink:0;padding:5px 8px;border-radius:7px;background:#e8eefb;color:#425f9b;font-size:10px;font-weight:800}
+.evc-evidence-options{display:flex;flex-direction:column;gap:7px}
+.evc-evidence-option{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid #e5eaf2;border-radius:10px;background:#fff;cursor:pointer}
+.evc-evidence-option:has(input:checked){border-color:#9bb4f2;background:#f5f8ff}
+.evc-evidence-option input{width:15px;height:15px;accent-color:#4d6edb;flex-shrink:0}
+.evc-evidence-option-main{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.evc-evidence-option-main strong{font-size:11px;color:#34445c;overflow-wrap:anywhere}
+.evc-evidence-option-main small{font-size:10px;color:#7b8799;text-transform:capitalize}
+.evc-evidence-date{font-size:10px;color:#718097;text-align:right}
+.evc-evidence-empty{padding:13px;border-radius:9px;background:#fff;color:#78859a;font-size:11px;line-height:1.6}
+.evc-evidence-footnote{margin:10px 0 0;color:#8893a5;font-size:10px;line-height:1.5}
+@media(max-width:520px){.evc-evidence-option{align-items:flex-start;flex-wrap:wrap}.evc-evidence-date{margin-left:25px;text-align:left}}
