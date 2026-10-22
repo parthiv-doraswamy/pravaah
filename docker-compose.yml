@@ -23,8 +23,12 @@ services:
       CORS_ORIGINS: http://localhost:5173
       JWT_SECRET_KEY: local-development-only-change-this-secret-before-deployment
       DEMO_USER_PASSWORD: ChangeMe-LocalOnly-123!
+      EVIDENCE_STORAGE_DIR: /data/uploads
+      EVIDENCE_MAX_UPLOAD_BYTES: ${EVIDENCE_MAX_UPLOAD_BYTES:-10485760}
     ports:
       - "8000:8000"
+    volumes:
+      - pravaah_uploads:/data/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -74,3 +78,4 @@ services:
 
 volumes:
   pravaah_postgres_data:
+  pravaah_uploads:
