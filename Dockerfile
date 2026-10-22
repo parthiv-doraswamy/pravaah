@@ -12,7 +12,7 @@ COPY app ./app
 COPY migrations ./migrations
 COPY scripts ./scripts
 COPY alembic.ini ./
-RUN pip install --upgrade pip && pip install .
+RUN pip install --upgrade pip && pip install . && mkdir -p /data/uploads && chown -R app:app /data
 
 USER app
 EXPOSE 8000
