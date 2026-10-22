@@ -266,3 +266,53 @@ def test_upload_removes_file_when_audit_event_persistence_fails(api_client_and_s
         from sqlalchemy import select
         from app.models.evidence_attachment import EvidenceAttachment
         assert db.scalars(select(EvidenceAttachment)).all() == []
+
+
+def test_upload_removes_partial_file_when_disk_write_fails(api_client_and_sessions, tmp_path, monkeypatch):
+    import pytest
+    from pathlib import Path
+
+    from app.core.config import Settings
+    import app.api.v1.routes.evidence as evidence_routes
+
+    client, session_factory = api_client_and_sessions
+    application_id = _setup(session_factory, "upload-disk-failure@example.test")
+    headers = {
+        "Authorization": f"Bearer {_login(client, 'upload-disk-failure@example.test')}"
+    }
+    evidence_id = _create_evidence(client, headers, application_id)
+    monkeypatch.setattr(
+        evidence_routes,
+        "get_settings",
+        lambda: Settings(evidence_storage_dir=str(tmp_path), evidence_max_upload_bytes=1024),
+    )
+
+    original_write_bytes = Path.write_bytes
+
+    def partial_write_then_fail(path, data):
+        if tmp_path.resolve() in path.resolve().parents:
+            original_write_bytes(path, data[:8])
+            raise OSError("simulated disk write failure")
+        return original_write_bytes(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", partial_write_then_fail)
+    with pytest.raises(OSError, match="simulated disk write failure"):
+        client.post(
+            f"/api/v1/applications/{application_id}/evidence/{evidence_id}/attachments",
+            headers=headers,
+            files={
+                "file": (
+                    "partial-demo.pdf",
+                    b"%PDF-1.4\\nsynthetic file contents\\n%%EOF",
+                    "application/pdf",
+                )
+            },
+        )
+
+    assert not [path for path in tmp_path.rglob("*") if path.is_file()]
+    with session_factory() as db:
+        from sqlalchemy import select
+        from app.models.evidence_attachment import EvidenceAttachment
+
+        assert db.scalars(select(EvidenceAttachment)).all() == []
+
