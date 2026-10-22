@@ -137,8 +137,10 @@ def test_delivery_skips_and_closes_notifications_for_inactive_recipients(api_cli
             enabled=True,
         )
 
-    assert result["attempted"] == 1
+    assert result["processed"] == 1
+    assert result["attempted"] == 0
     assert result["sent"] == 0
+    assert result["failed"] == 1
     assert result["skipped_inactive_recipients"] == 1
     assert transport_calls["count"] == 0
     with db_factory() as db:
