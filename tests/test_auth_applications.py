@@ -109,3 +109,58 @@ def test_institution_user_can_create_draft_for_own_institution(api_client_and_se
     assert response.json()["status"] == "draft"
     assert response.json()["institution_id"] == str(institution_id)
     assert response.json()["application_number"].startswith("PVH-")
+
+
+
+def test_institution_cannot_read_another_institutions_case_or_evidence(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    institution_a, _ = create_institution_user(
+        session_factory, email="scope-owner@example.test", code="SCOPE-A", name="Scope Owner"
+    )
+    institution_b, _ = create_institution_user(
+        session_factory, email="scope-other@example.test", code="SCOPE-B", name="Scope Other"
+    )
+    with session_factory() as db:
+        private_case = Application(
+            application_number="PVH-SCOPE-PRIVATE",
+            title="Private institution case",
+            status="draft",
+            institution_id=institution_b,
+        )
+        db.add(private_case)
+        db.commit()
+        private_case_id = private_case.id
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "scope-owner@example.test", "password": "Test-password-123!"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    case_response = client.get(f"/api/v1/applications/{private_case_id}", headers=headers)
+    assert case_response.status_code == 404
+
+    evidence_response = client.get(
+        f"/api/v1/applications/{private_case_id}/evidence",
+        headers=headers,
+    )
+    assert evidence_response.status_code == 404
+
+    transition_response = client.post(
+        f"/api/v1/applications/{private_case_id}/transitions",
+        headers=headers,
+        json={
+            "expected_status": "draft",
+            "target_status": "submitted",
+            "reason": "Must not cross institution boundaries",
+        },
+    )
+    assert transition_response.status_code == 404
+
+    own_case = client.post(
+        "/api/v1/applications",
+        headers=headers,
+        json={"title": "Owner institution case", "summary": "Scope control test"},
+    )
+    assert own_case.status_code == 201
+    assert own_case.json()["institution_id"] == str(institution_a)
