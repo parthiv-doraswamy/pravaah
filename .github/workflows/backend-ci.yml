@@ -28,6 +28,15 @@ jobs:
         run: ruff check --select E4,E7,E9,F app tests migrations
 
 
+
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Validate Docker Compose configuration
+        run: docker compose config --quiet
+
   frontend-build:
     runs-on: ubuntu-latest
     defaults:
