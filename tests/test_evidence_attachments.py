@@ -230,3 +230,40 @@ def test_attachment_listing_and_download_require_matching_visible_application(ap
         headers=reviewer_headers,
     )
     assert mismatched_pair.status_code == 404
+
+
+
+def test_upload_removes_file_when_audit_event_persistence_fails(api_client_and_sessions, tmp_path, monkeypatch):
+    import pytest
+    from app.core.config import Settings
+    import app.api.v1.routes.evidence as evidence_routes
+
+    client, session_factory = api_client_and_sessions
+    application_id = _setup(session_factory, "upload-persistence-failure@example.test")
+    headers = {
+        "Authorization": f"/Bearer {_login(client, 'upload-persistence-failure@example.test')}"
+    }
+    headers["Authorization"] = headers["Authorization"].replace("/Bearer ", "Bearer ")
+    evidence_id = _create_evidence(client, headers, application_id)
+    monkeypatch.setattr(
+        evidence_routes,
+        "get_settings",
+        lambda: Settings(evidence_storage_dir=str(tmp_path), evidence_max_upload_bytes=1024),
+    )
+
+    def fail_audit_event(*args, **kwargs):
+        raise RuntimeError("simulated audit persistence failure")
+
+    monkeypatch.setattr(evidence_routes, "append_event", fail_audit_event)
+    with pytest.raises(RuntimeError, match="simulated audit persistence failure"):
+        client.post(
+            f"/api/v1/applications/{application_id}/evidence/{evidence_id}/attachments",
+            headers=headers,
+            files={"file": ("failure-demo.pdf", b"%PDF-1.4\nsynthetic file\n%%EOF", "application/pdf")},
+        )
+
+    assert not [path for path in tmp_path.rglob("*") if path.is_file()]
+    with session_factory() as db:
+        from sqlalchemy import select
+        from app.models.evidence_attachment import EvidenceAttachment
+        assert db.scalars(select(EvidenceAttachment)).all() == []
