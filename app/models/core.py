@@ -72,3 +72,4 @@ class Application(Base):
     )
 
     institution: Mapped[Institution] = relationship(back_populates="applications")
+    events: Mapped[list["ApplicationEvent"]] = relationship(back_populates="application", order_by="ApplicationEvent.sequence")
