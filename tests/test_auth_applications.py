@@ -73,3 +73,39 @@ def test_application_registry_requires_authentication(api_client_and_sessions) -
     client, _ = api_client_and_sessions
     response = client.get("/api/v1/applications")
     assert response.status_code == 401
+
+
+def test_wrong_password_is_rejected(api_client_and_sessions) -> None:
+    client, session_factory = api_client_and_sessions
+    create_institution_user(
+        session_factory, email="wrong-password@example.test", code="INST-C", name="User C"
+    )
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "wrong-password@example.test", "password": "not-the-password"},
+    )
+    assert response.status_code == 401
+
+
+def test_institution_user_can_create_draft_for_own_institution(api_client_and_sessions) -> None:
+    client, session_factory = api_client_and_sessions
+    institution_id, _ = create_institution_user(
+        session_factory, email="creator@example.test", code="INST-D", name="Creator"
+    )
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "creator@example.test", "password": "Test-password-123!"},
+    )
+    token = login.json()["access_token"]
+
+    response = client.post(
+        "/api/v1/applications",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "New programme proposal", "summary": "Synthetic integration-test case"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "draft"
+    assert response.json()["institution_id"] == str(institution_id)
+    assert response.json()["application_number"].startswith("PVH-")
