@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:5173"
     database_url: str = "postgresql+psycopg://pravaah:pravaah@localhost:5432/pravaah"
+    jwt_secret_key: str = "local-development-only-change-this-secret-before-deployment"
+    access_token_expire_minutes: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
