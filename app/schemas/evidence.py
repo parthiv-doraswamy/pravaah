@@ -31,3 +31,17 @@ class EvidenceResponse(BaseModel):
     created_by_user_id: UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+class EvidenceAttachmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    application_id: UUID
+    evidence_id: UUID
+    original_filename: str
+    content_type: str
+    size_bytes: int
+    sha256_hex: str
+    uploaded_by_user_id: UUID | None
+    created_at: datetime
