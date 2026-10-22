@@ -37,6 +37,7 @@ class EVCReportUpdate(BaseModel):
     checklist: list[EVCChecklistItem] = Field(min_length=6, max_length=6)
     outcome_summary: str = Field(min_length=10, max_length=4000)
     observations: str | None = Field(default=None, max_length=10000)
+    evidence_ids: list[UUID] = Field(default_factory=list, max_length=100)
     submit: bool = False
 
     @model_validator(mode="after")
@@ -61,6 +62,7 @@ class EVCVisitResponse(BaseModel):
     notes: str | None
     status: str
     checklist: list[dict[str, object]] | None
+    linked_evidence_ids: list[UUID] | None
     outcome_summary: str | None
     observations: str | None
     report_status: str
