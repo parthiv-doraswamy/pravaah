@@ -1,16 +1,20 @@
 """Read-only compliance overview derived from recorded evidence expiry dates."""
 
-from datetime import date
+from datetime import UTC, date, datetime
+from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.routes.applications import scoped_applications_statement
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evidence import ApplicationEvidence
+from app.models.escalation import ComplianceEscalation
+from app.schemas.escalations import EscalationResponse
+from app.services.workflow import append_event
 from app.schemas.compliance import ComplianceOverview, EvidenceAlert
 
 router = APIRouter()
@@ -77,3 +81,57 @@ def compliance_overview(
         warning_windows_days=[30, 7, 1],
         warning_source="Synthetic PRAVAAH demo defaults; not official AICTE deadlines",
     )
+
+
+
+@router.get("/escalations", response_model=list[EscalationResponse], summary="List compliance escalations in the current user's scope")
+def list_escalations(
+    open_only: bool = True,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[ComplianceEscalation]:
+    visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
+    statement = select(ComplianceEscalation).where(
+        ComplianceEscalation.application_id.in_(select(visible_ids.c.id))
+    )
+    if open_only:
+        statement = statement.where(ComplianceEscalation.status == "open")
+    return list(db.scalars(statement.order_by(ComplianceEscalation.triggered_at.desc()).limit(100)).all())
+
+
+@router.post(
+    "/escalations/{escalation_id}/resolve",
+    response_model=EscalationResponse,
+    summary="Resolve a compliance escalation",
+)
+def resolve_escalation(
+    escalation_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(
+        "scrutiny_officer", "regional_officer", "bureau_officer", "policy_admin", "system_admin", "evc_coordinator"
+    )),
+) -> ComplianceEscalation:
+    visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
+    escalation = db.scalar(select(ComplianceEscalation).where(
+        ComplianceEscalation.id == escalation_id,
+        ComplianceEscalation.application_id.in_(select(visible_ids.c.id)),
+    ))
+    if escalation is None:
+        raise HTTPException(status_code=404, detail="Escalation not found")
+    if escalation.status != "resolved":
+        now = datetime.now(UTC)
+        escalation.status = "resolved"
+        escalation.resolved_at = now
+        application = db.get(Application, escalation.application_id)
+        append_event(
+            db,
+            application_id=escalation.application_id,
+            event_type="compliance_escalation_resolved",
+            from_status=application.status if application else None,
+            to_status=application.status if application else None,
+            actor_user_id=user.id,
+            metadata={"escalation_id": str(escalation.id), "evidence_id": str(escalation.evidence_id)},
+        )
+        db.commit()
+        db.refresh(escalation)
+    return escalation
