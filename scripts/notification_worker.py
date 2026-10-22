@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import get_session_factory
 from app.services.notification_jobs import run_expiry_monitoring
+from app.services.notification_delivery import process_due_notifications
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -17,10 +18,13 @@ logging.basicConfig(
 logger = logging.getLogger("pravaah.notification_worker")
 
 
-def run_once() -> dict[str, int | str]:
+def run_once() -> dict[str, object]:
     session_factory = get_session_factory()
     with session_factory() as db:
-        return run_expiry_monitoring(db)
+        scan = run_expiry_monitoring(db)
+    with session_factory() as db:
+        delivery = process_due_notifications(db)
+    return {"expiry_scan": scan, "delivery": delivery}
 
 
 def main() -> None:
