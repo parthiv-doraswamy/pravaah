@@ -195,3 +195,55 @@ def test_evc_report_cannot_be_submitted_with_unexplained_attention_item(api_clie
         },
     )
     assert response.status_code == 422
+
+
+def test_evc_report_links_only_evidence_from_its_application(api_client_and_sessions):
+    from uuid import uuid4
+
+    client, session_factory = api_client_and_sessions
+    _, application_id = _scheduler(session_factory, email="evc-evidence-link@example.test")
+    token = _login(client, "evc-evidence-link@example.test")
+    headers = {"Authorization": f"Bearer {token}"}
+    evidence_response = client.post(
+        f"/api/v1/applications/{application_id}/evidence",
+        headers=headers,
+        json={
+            "title": "Synthetic fire safety certificate",
+            "category": "safety_certificate",
+            "reference_number": "DEMO-FIRE-001",
+            "notes": "Synthetic metadata only; no file is attached.",
+        },
+    )
+    assert evidence_response.status_code == 201, evidence_response.text
+    evidence_id = evidence_response.json()["id"]
+
+    created = client.post(
+        "/api/v1/evc/visits",
+        headers=headers,
+        json={
+            "application_id": str(application_id),
+            "scheduled_for": (datetime.now(UTC) + timedelta(days=3)).isoformat(),
+            "mode": "virtual",
+        },
+    )
+    assert created.status_code == 201, created.text
+    visit_id = created.json()["id"]
+    client.post(f"/api/v1/evc/visits/{visit_id}/status", headers=headers, json={"status": "completed"})
+
+    checklist = [
+        {"key": key, "label": key.title(), "result": "pass", "notes": None}
+        for key in ["governance", "infrastructure", "faculty", "curriculum", "safety", "records"]
+    ]
+    payload = {
+        "checklist": checklist,
+        "outcome_summary": "Synthetic demo report linked to registered evidence.",
+        "evidence_ids": [evidence_id],
+        "submit": False,
+    }
+    saved = client.put(f"/api/v1/evc/visits/{visit_id}/report", headers=headers, json=payload)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["linked_evidence_ids"] == [evidence_id]
+
+    payload["evidence_ids"] = [str(uuid4())]
+    invalid = client.put(f"/api/v1/evc/visits/{visit_id}/report", headers=headers, json=payload)
+    assert invalid.status_code == 422
