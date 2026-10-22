@@ -162,6 +162,27 @@ def test_full_application_lifecycle_enforces_roles_and_verifies_timeline(api_cli
     # Each valid transition must be made by the role assigned to that stage.
     transition("institution_user", "draft", "submitted")
     transition("bureau_officer", "submitted", "pending_authority_decision", status_code=409)
+
+    # A rejected role bypass must not mutate status or append an audit event.
+    unchanged = client.get(
+        f"/api/v1/applications/{application_id}",
+        headers=tokens["institution_user"],
+    )
+    assert unchanged.status_code == 200
+    assert unchanged.json()["status"] == "submitted"
+    timeline_after_denial = client.get(
+        f"/api/v1/applications/{application_id}/events",
+        headers=tokens["institution_user"],
+    )
+    assert timeline_after_denial.status_code == 200
+    assert len(timeline_after_denial.json()) == 1
+    verified_after_denial = client.get(
+        f"/api/v1/applications/{application_id}/events/verify",
+        headers=tokens["institution_user"],
+    )
+    assert verified_after_denial.status_code == 200
+    assert verified_after_denial.json()["valid"] is True
+
     transition("scrutiny_officer", "submitted", "under_scrutiny")
     transition("scrutiny_officer", "under_scrutiny", "clarification_requested")
     transition("institution_user", "clarification_requested", "submitted")
