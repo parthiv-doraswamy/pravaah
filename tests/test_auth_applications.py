@@ -164,3 +164,49 @@ def test_institution_cannot_read_another_institutions_case_or_evidence(api_clien
     )
     assert own_case.status_code == 201
     assert own_case.json()["institution_id"] == str(institution_a)
+
+
+
+def test_regional_officer_cannot_access_applications_outside_assigned_region(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    region_a, _ = create_institution_user(
+        session_factory, email="region-a-owner@example.test", code="REG-A-OWNER", name="Region A Owner"
+    )
+    region_b, _ = create_institution_user(
+        session_factory, email="region-b-owner@example.test", code="REG-B-OWNER", name="Region B Owner"
+    )
+    with session_factory() as db:
+        region_b_institution = db.get(Institution, region_b)
+        region_b_institution.region_code = "REGION-B"
+        regional_user = User(
+            email="regional-reviewer@example.test",
+            full_name="Regional Reviewer",
+            role="regional_officer",
+            password_hash=hash_password("Test-password-123!"),
+            institution_id=region_a,
+        )
+        foreign_case = Application(
+            application_number="PVH-REGION-B-PRIVATE",
+            title="Region B private case",
+            status="submitted",
+            institution_id=region_b,
+        )
+        db.add_all([regional_user, foreign_case])
+        db.commit()
+        foreign_case_id = foreign_case.id
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "regional-reviewer@example.test", "password": "Test-password-123!"},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    registry = client.get("/api/v1/applications", headers=headers)
+    assert registry.status_code == 200
+    assert all(item["institution_id"] != str(region_b) for item in registry.json()["items"])
+
+    detail = client.get(f"/api/v1/applications/{foreign_case_id}", headers=headers)
+    assert detail.status_code == 404
+    timeline = client.get(f"/api/v1/applications/{foreign_case_id}/events", headers=headers)
+    assert timeline.status_code == 404
