@@ -1,6 +1,7 @@
 """Tests for scheduled expiry monitoring and overdue compliance escalation."""
 
 from datetime import date, timedelta
+from uuid import UUID
 
 from app.auth.security import hash_password
 from app.models.core import Application, Institution, User
@@ -201,7 +202,7 @@ def test_institution_user_cannot_resolve_compliance_escalation(api_client_and_se
     )
     assert response.status_code == 403
     with session_factory() as db:
-        escalation = db.query(ComplianceEscalation).filter_by(id=escalation_id).one()
+        escalation = db.query(ComplianceEscalation).filter_by(id=UUID(escalation_id)).one()
         assert escalation.status == "open"
         assert db.query(ApplicationEvent).filter_by(
             event_type="compliance_escalation_resolved"
