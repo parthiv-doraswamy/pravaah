@@ -132,3 +132,113 @@ test('institution can sign in and create a draft application', async ({ page }) 
     summary: 'Browser-tested draft intake.',
   })
 })
+
+
+test('institution can register evidence and verify the application audit timeline', async ({ page }) => {
+  const application = { ...initialApplication }
+  const evidence: Record<string, unknown>[] = []
+  const events: Record<string, unknown>[] = []
+
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const path = url.pathname.replace('/api/v1', '')
+    const appId = application.id
+
+    if (path === '/auth/login' && request.method() === 'POST') {
+      await route.fulfill({ json: { access_token: 'e2e-access-token', token_type: 'bearer', expires_in: 3600 } })
+      return
+    }
+    if (path === '/auth/me') {
+      await route.fulfill({ json: institution })
+      return
+    }
+    if (path === '/applications' && request.method() === 'GET') {
+      await route.fulfill({ json: { items: [application], page: 1, page_size: 100, total: 1 } })
+      return
+    }
+    if (path === `/applications/${appId}` && request.method() === 'GET') {
+      await route.fulfill({ json: application })
+      return
+    }
+    if (path === `/applications/${appId}/evidence` && request.method() === 'GET') {
+      await route.fulfill({ json: evidence })
+      return
+    }
+    if (path === `/applications/${appId}/evidence` && request.method() === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>
+      const created = {
+        id: '40000000-0000-4000-8000-000000000001',
+        application_id: appId,
+        title: body.title,
+        category: body.category,
+        reference_number: body.reference_number ?? null,
+        issued_on: body.issued_on ?? null,
+        expires_on: body.expires_on ?? null,
+        policy_key: body.policy_key ?? null,
+        notes: body.notes ?? null,
+        created_by_user_id: institution.id,
+        created_at: '2026-10-23T10:00:00Z',
+        updated_at: '2026-10-23T10:00:00Z',
+      }
+      evidence.push(created)
+      events.push({
+        id: '50000000-0000-4000-8000-000000000001',
+        application_id: appId,
+        sequence: 1,
+        event_type: 'evidence_registered',
+        from_status: null,
+        to_status: null,
+        actor_user_id: institution.id,
+        reason: 'Evidence metadata registered',
+        event_metadata: { evidence_id: created.id },
+        occurred_at: '2026-10-23T10:00:00Z',
+        previous_hash: 'GENESIS',
+        event_hash: 'e2e-audit-hash-001',
+      })
+      await route.fulfill({ status: 201, json: created })
+      return
+    }
+    if (path === `/applications/${appId}/events`) {
+      await route.fulfill({ json: events })
+      return
+    }
+    if (path === `/applications/${appId}/events/verify`) {
+      await route.fulfill({ json: {
+        application_id: appId, valid: true, event_count: events.length, first_invalid_sequence: null,
+      } })
+      return
+    }
+    if (path.startsWith(`/applications/${appId}/evidence/`) && path.endsWith('/attachments')) {
+      await route.fulfill({ json: [] })
+      return
+    }
+    if (path === '/evc/visits' || path === '/compliance/overview' || path === '/compliance/escalations' || path === '/notifications' || path === '/policies') {
+      await route.fulfill({ json: path === '/compliance/overview' ? {
+        as_of: '2026-10-23', total_evidence: 0, expired: 0, due_within_1_day: 0,
+        due_within_7_days: 0, due_within_30_days: 0, without_expiry: 0,
+        alerts: [], warning_windows_days: [30, 7, 1], warning_source: 'Synthetic test data.',
+      } : [] })
+      return
+    }
+    await route.fulfill({ json: [] })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('Email address').fill(institution.email)
+  await page.getByLabel('Password').fill('correct-demo-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('heading', { name: 'Good to see you, Demo.' })).toBeVisible()
+  await page.getByRole('button', { name: 'Open PVH-E2E-0001' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Existing demo application' })).toBeVisible()
+  await page.getByLabel('Evidence title').fill('Fire safety certificate')
+  await page.getByRole('button', { name: 'Register evidence' }).click()
+
+  await expect(page.getByText('Fire safety certificate').first()).toBeVisible()
+  await expect(page.getByText('Audit chain verified')).toBeVisible()
+  await expect(page.getByText('evidence registered')).toBeVisible()
+  await expect(page.getByText('1 events checked. No tampering detected in the stored chain.')).toBeVisible()
+  expect(evidence).toHaveLength(1)
+  expect(events).toHaveLength(1)
+})
