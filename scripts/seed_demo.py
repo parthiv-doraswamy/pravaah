@@ -7,6 +7,8 @@ outside the local development environment.
 
 import os
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 
 from app.auth.security import hash_password
@@ -86,18 +88,30 @@ def main() -> None:
             ("PVH-DEMO-2001", "Institution renewal application", "under_scrutiny", second_institution.id),
         ]
         for number, title, case_status, institution_id in demo_cases:
-            existing = db.scalar(
-                select(Application).where(Application.application_number == number)
-            )
+            existing = db.scalar(select(Application).where(Application.application_number == number))
             if existing is None:
-                db.add(
-                    Application(
-                        application_number=number,
-                        title=title,
-                        status=case_status,
-                        institution_id=institution_id,
-                        summary="Synthetic sample record for local demonstration only.",
-                    )
+                existing = Application(
+                    application_number=number,
+                    title=title,
+                    status=case_status,
+                    institution_id=institution_id,
+                    summary="Synthetic sample record for local demonstration only.",
+                )
+                db.add(existing)
+                db.flush()
+
+            event_count = db.scalar(
+                select(ApplicationEvent.id).where(ApplicationEvent.application_id == existing.id).limit(1)
+            )
+            if event_count is None:
+                append_event(
+                    db,
+                    application_id=existing.id,
+                    event_type="demo_case_seeded",
+                    from_status=None,
+                    to_status=existing.status,
+                    actor_user_id=None,
+                    metadata={"source": "synthetic_demo_seed"},
                 )
 
         policy_examples = [
