@@ -6,7 +6,7 @@ PRAVAAH is a prototype for transparent, policy-driven approval workflow coordina
 
 ## Project status
 
-**Status: Scheduled expiry monitoring, compliance escalation records, and optional SMTP retry delivery are implemented in code.** The Compose worker scans expiry dates, creates idempotent reminders, opens escalations for long-expired evidence, and attempts email delivery only when SMTP is configured. Build and test execution still need confirmation by CI or a local run.
+**Status: Backend tests and lint, plus the frontend production build, passed in GitHub Actions on 22 October 2026.** Scheduled expiry monitoring, compliance escalation records, and optional SMTP retry delivery are implemented in code. The Compose worker scans expiry dates, creates idempotent reminders, opens escalations for long-expired evidence, and attempts email delivery only when SMTP is configured. Docker Compose end-to-end startup and real SMTP delivery still require environment-level verification.
 
 ## Planned stack
 
