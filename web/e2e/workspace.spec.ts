@@ -116,7 +116,7 @@ test('institution can sign in and create a draft application', async ({ page }) 
   await page.getByLabel('Password').fill('correct-demo-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('heading', { name: 'Good to see you, Demo.' })).toBeVisible()
-  await expect(page.getByText('Existing demo application')).toBeVisible()
+  await expect(page.getByText('Existing demo application').first()).toBeVisible()
 
   await page.getByRole('button', { name: 'New application' }).click()
   await expect(page.getByRole('heading', { name: 'Create a draft application' })).toBeVisible()
