@@ -29,6 +29,50 @@ jobs:
 
 
 
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pravaah
+          POSTGRES_USER: pravaah
+          POSTGRES_PASSWORD: pravaah
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pravaah -d pravaah"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://pravaah:pravaah@localhost:5432/pravaah
+      JWT_SECRET_KEY: ci-only-secret-key-please-do-not-use-in-production
+      DEMO_USER_PASSWORD: CI-Only-Demo-Password-2026!
+      SMTP_HOST: ""
+      SMTP_FROM: ""
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Apply all migrations to PostgreSQL
+        run: alembic upgrade head
+      - name: Verify current migration revision
+        run: alembic current
+      - name: Seed synthetic demo records
+        run: python -m scripts.seed_demo
+      - name: Verify demo seed is idempotent
+        run: python -m scripts.seed_demo
+      - name: Run one notification worker cycle
+        run: python -m scripts.notification_worker --once
+
   compose-config:
     runs-on: ubuntu-latest
     steps:
