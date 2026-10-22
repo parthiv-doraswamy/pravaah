@@ -439,7 +439,7 @@ function App() {
             <div className="detail-timeline"><div className="panel-heading"><div><h2>Application timeline</h2><p>Chronological record of application events</p></div><span>{caseEvents.length} events</span></div>
               {loadingTimeline ? <div className="table-state"><div className="loading-line"/><span>Loading events…</span></div> : caseEvents.length === 0 ? <div className="empty-state"><strong>No timeline events</strong><p>Events appear here as the application progresses.</p></div> : <div className="event-list">{caseEvents.map(event => <div className="event-row" key={event.id}><div className="event-dot"/><div><strong>{event.event_type.replaceAll('_', ' ')}</strong><p>{event.from_status ? (statusLabels[event.from_status] || event.from_status.replaceAll('_', ' ')) + ' → ' + (statusLabels[event.to_status || ''] || (event.to_status || '').replaceAll('_', ' ')) : 'Initial record created'}{event.reason ? ' · ' + event.reason : ''}</p><span>{new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(event.occurred_at))}</span><details><summary>Event hash</summary><code>{event.event_hash}</code></details></div></div>)}</div>}
             </div>
-          </section>
+          </section>}
 
 
           {view === 'compliance' && <section className="compliance-page">
