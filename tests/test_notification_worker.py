@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 
+from app.auth.security import hash_password
 from app.models.core import Application, Institution, User
 from app.models.evidence import ApplicationEvidence
 from app.models.escalation import ComplianceEscalation
@@ -105,7 +106,7 @@ def test_escalation_can_be_listed_and_resolved_by_reviewer(api_client_and_sessio
         )
         reviewer = User(
             email="escalation-reviewer@example.test", full_name="Review Officer",
-            role="scrutiny_officer", password_hash=__import__("app.auth.security", fromlist=["hash_password"]).hash_password("Test-password-123!"),
+            role="scrutiny_officer", password_hash=hash_password("Test-password-123!"),
         )
         case = Application(
             application_number="PVH-WK-004", title="Escalation review case",
