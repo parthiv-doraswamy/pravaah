@@ -40,5 +40,20 @@ services:
     depends_on:
       - api
 
+  notification-worker:
+    build: .
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://pravaah:pravaah@db:5432/pravaah
+      CORS_ORIGINS: http://localhost:5173
+      JWT_SECRET_KEY: local-development-only-change-this-secret-before-deployment
+      NOTIFICATION_WORKER_INTERVAL_SECONDS: 300
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: ["python", "-m", "scripts.notification_worker"]
+
 volumes:
   pravaah_postgres_data:
