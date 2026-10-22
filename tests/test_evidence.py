@@ -145,3 +145,31 @@ def test_compliance_overview_only_includes_visible_applications(api_client_and_s
     assert response.status_code == 200
     assert response.json()["total_evidence"] == 0
     assert response.json()["alerts"] == []
+
+
+
+def test_evidence_text_fields_are_trimmed_and_blank_values_rejected(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    headers, application_id, _ = _login_and_case(client, session_factory, "008")
+    response = client.post(
+        f"/api/v1/applications/{application_id}/evidence",
+        headers=headers,
+        json={
+            "title": "   Fire safety certificate   ",
+            "category": "   fire_safety   ",
+            "reference_number": "   REF-008   ",
+            "policy_key": "   EVIDENCE_EXPIRY   ",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["title"] == "Fire safety certificate"
+    assert response.json()["category"] == "fire_safety"
+    assert response.json()["reference_number"] == "REF-008"
+    assert response.json()["policy_key"] == "EVIDENCE_EXPIRY"
+
+    invalid = client.post(
+        f"/api/v1/applications/{application_id}/evidence",
+        headers=headers,
+        json={"title": "   ", "category": "other"},
+    )
+    assert invalid.status_code == 422
