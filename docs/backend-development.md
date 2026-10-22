@@ -61,3 +61,14 @@ The current API includes:
 - `GET /api/v1/applications/policies/registry`
 
 Demo policy values and target durations are illustrative, not official AICTE rules or legal deadlines. Final approval and rejection remain explicit human actions. The event chain is tamper-evident and verifiable; it is not a substitute for access-controlled storage, backups, or an externally anchored audit log.
+
+
+## Evidence metadata and expiry tracking
+
+The `application_evidence` table stores evidence title, category, reference number, optional issue/expiry dates, optional policy key, notes, creator, and timestamps. It stores metadata only: this slice does not upload binary files or provide a document download endpoint.
+
+- `GET /api/v1/applications/{id}/evidence` lists evidence metadata for an application visible to the current user.
+- `POST /api/v1/applications/{id}/evidence` registers metadata for a visible application. Writer roles are checked server-side, and expiry cannot precede issue date.
+- Each registration appends an `evidence_registered` event to the application's hash chain so the record is included in audit verification.
+
+Expiry badges in the frontend are a display-level warning based on the recorded date; they are not a legal determination, a scheduled reminder, or a substitute for a verified policy engine. Actual file storage, malware scanning, content-type validation, secure downloads, and automated renewal notifications remain future work.
