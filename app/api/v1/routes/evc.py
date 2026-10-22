@@ -12,6 +12,7 @@ from app.auth.dependencies import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evc_visit import EVCVisit
+from app.models.evidence import ApplicationEvidence
 from app.schemas.evc import EVCReportUpdate, EVCVisitCreate, EVCVisitResponse, EVCVisitStatusUpdate
 from app.services.workflow import append_event
 
@@ -161,7 +162,23 @@ def save_visit_report(
         raise HTTPException(status_code=409, detail="A report can only be recorded after the visit is completed")
     if visit.report_status == "submitted":
         raise HTTPException(status_code=409, detail="Submitted EVC reports are immutable")
+    unique_evidence_ids = set(payload.evidence_ids)
+    if len(unique_evidence_ids) != len(payload.evidence_ids):
+        raise HTTPException(status_code=422, detail="Evidence links must not contain duplicates")
+    if unique_evidence_ids:
+        matching_evidence = db.scalars(
+            select(ApplicationEvidence.id).where(
+                ApplicationEvidence.application_id == visit.application_id,
+                ApplicationEvidence.id.in_(unique_evidence_ids),
+            )
+        ).all()
+        if set(matching_evidence) != unique_evidence_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="Every linked evidence item must belong to the same application as this visit",
+            )
     visit.checklist = [item.model_dump() for item in payload.checklist]
+    visit.linked_evidence_ids = [str(item) for item in payload.evidence_ids]
     visit.outcome_summary = payload.outcome_summary.strip()
     visit.observations = payload.observations.strip() if payload.observations else None
     previous_report_status = visit.report_status
@@ -183,6 +200,7 @@ def save_visit_report(
             "visit_id": str(visit.id),
             "report_status": visit.report_status,
             "checklist_items": len(visit.checklist or []),
+            "linked_evidence_ids": visit.linked_evidence_ids or [],
             "needs_attention": sum(1 for item in visit.checklist or [] if item.get("result") == "needs_attention"),
         },
     )
