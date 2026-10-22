@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EvidenceAttachment, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
 type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
@@ -44,6 +44,9 @@ function App() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null)
   const [caseEvents, setCaseEvents] = useState<ApplicationEvent[]>([])
   const [evidenceItems, setEvidenceItems] = useState<ApplicationEvidence[]>([])
+  const [attachmentsByEvidence, setAttachmentsByEvidence] = useState<Record<string, EvidenceAttachment[]>>({})
+  const [uploadingEvidenceId, setUploadingEvidenceId] = useState<string | null>(null)
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null)
   const [loadingEvidence, setLoadingEvidence] = useState(false)
   const [evidenceTitle, setEvidenceTitle] = useState('')
   const [evidenceCategory, setEvidenceCategory] = useState('approval_letter')
@@ -146,8 +149,15 @@ function App() {
     setLoadingTimeline(true)
     setLoadingEvidence(true)
     Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id), api.evidence(selectedApplication.id)])
-      .then(([events, verification, evidence]) => {
-        if (!cancelled) { setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence) }
+      .then(async ([events, verification, evidence]) => {
+        const attachmentLists = await Promise.all(evidence.map(async item => ({
+          id: item.id,
+          files: await api.evidenceAttachments(selectedApplication.id, item.id),
+        })))
+        if (!cancelled) {
+          setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence)
+          setAttachmentsByEvidence(Object.fromEntries(attachmentLists.map(item => [item.id, item.files])))
+        }
       })
       .catch(error => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load the application timeline and evidence.') })
       .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false) } })
@@ -417,6 +427,50 @@ function App() {
       setNotice(error instanceof Error ? error.message : 'Could not register evidence metadata.')
     } finally {
       setSavingEvidence(false)
+    }
+  }
+
+  async function handleUploadEvidenceFile(evidenceId: string, file?: File) {
+    if (!selectedApplication || !file) return
+    setUploadingEvidenceId(evidenceId)
+    setNotice('')
+    try {
+      await api.uploadEvidenceAttachment(selectedApplication.id, evidenceId, file)
+      const [attachments, events, verification] = await Promise.all([
+        api.evidenceAttachments(selectedApplication.id, evidenceId),
+        api.applicationEvents(selectedApplication.id),
+        api.verifyEvents(selectedApplication.id),
+      ])
+      setAttachmentsByEvidence(items => ({ ...items, [evidenceId]: attachments }))
+      setCaseEvents(events)
+      setEventVerification(verification)
+      setNotice('File uploaded, validated and recorded in the application audit timeline.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not upload this file.')
+    } finally {
+      setUploadingEvidenceId(null)
+    }
+  }
+
+  async function handleDownloadEvidenceFile(evidenceId: string, attachment: EvidenceAttachment) {
+    if (!selectedApplication) return
+    setDownloadingAttachmentId(attachment.id)
+    setNotice('')
+    try {
+      const blob = await api.downloadEvidenceAttachment(selectedApplication.id, evidenceId, attachment.id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = attachment.original_filename
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      setNotice('Private evidence download started.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not download this file.')
+    } finally {
+      setDownloadingAttachmentId(null)
     }
   }
 
