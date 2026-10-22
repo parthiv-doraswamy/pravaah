@@ -84,3 +84,31 @@ def test_delivery_is_deferred_when_smtp_is_not_configured(api_client_and_session
         assert record.delivery_status == "pending"
         assert record.attempt_count == 0
         assert db.query(NotificationAttempt).count() == 0
+
+
+def test_delivery_stops_after_configured_attempt_limit(api_client_and_sessions):
+    _, db_factory = api_client_and_sessions
+    notification_id = seed_notification(db_factory)
+    with db_factory() as db:
+        record = db.get(NotificationRecord, notification_id)
+        record.max_attempts = 1
+        db.commit()
+
+    def failing_transport(recipient, subject, body):
+        raise OSError("permanent SMTP rejection")
+
+    with db_factory() as db:
+        result = process_due_notifications(
+            db,
+            transport=failing_transport,
+            now=datetime(2026, 10, 22, 10, 0, tzinfo=UTC),
+            enabled=True,
+        )
+    assert result["failed"] == 1
+    with db_factory() as db:
+        record = db.get(NotificationRecord, notification_id)
+        assert record.delivery_status == "failed"
+        assert record.attempt_count == 1
+        attempt = db.query(NotificationAttempt).filter_by(notification_id=notification_id).one()
+        assert attempt.outcome == "failed"
+        assert attempt.next_attempt_at is None
