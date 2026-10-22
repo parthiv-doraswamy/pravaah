@@ -11,7 +11,7 @@
 docker compose up --build
 ```
 
-Compose starts PostgreSQL, waits for its health check, applies Alembic migrations, and starts the API. The local demo database credentials in `docker-compose.yml` are for local development only; never reuse them in a public or production deployment.
+Compose starts PostgreSQL, waits for its health check, applies Alembic migrations, seeds clearly synthetic local demo accounts and cases, and starts the API. The seeded institution and reviewer accounts use the local-only password `ChangeMe-LocalOnly-123!`; these credentials must never be reused outside this local Compose setup. The local demo database credentials in `docker-compose.yml` are for local development only; never reuse them in a public or production deployment.
 
 - API: `http://localhost:8000`
 - OpenAPI docs: `http://localhost:8000/docs`
