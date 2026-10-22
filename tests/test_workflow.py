@@ -213,3 +213,38 @@ def test_full_application_lifecycle_enforces_roles_and_verifies_timeline(api_cli
     )
     assert final_case.status_code == 200
     assert final_case.json()["status"] == "approved"
+
+
+def test_multiple_events_in_one_transaction_receive_distinct_sequences(api_client_and_sessions):
+    _, session_factory = api_client_and_sessions
+    with session_factory() as db:
+        user, application = _case(db, "005")
+        append_event(
+            db,
+            application_id=application.id,
+            event_type="first_event",
+            from_status="draft",
+            to_status="draft",
+            actor_user_id=user.id,
+        )
+        append_event(
+            db,
+            application_id=application.id,
+            event_type="second_event",
+            from_status="draft",
+            to_status="draft",
+            actor_user_id=user.id,
+        )
+        db.commit()
+
+        events = list(
+            db.scalars(
+                select(ApplicationEvent)
+                .where(ApplicationEvent.application_id == application.id)
+                .order_by(ApplicationEvent.sequence)
+            ).all()
+        )
+        assert [event.sequence for event in events] == [1, 2]
+        assert [event.event_type for event in events] == ["first_event", "second_event"]
+        assert verify_event_chain(events) == (True, None)
+
