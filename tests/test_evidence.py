@@ -87,3 +87,61 @@ def test_evidence_cannot_be_read_outside_institution_scope(api_client_and_sessio
     _, application_b, _ = _login_and_case(client, session_factory, "004")
     response = client.get(f"/api/v1/applications/{application_b}/evidence", headers=headers_a)
     assert response.status_code == 404
+
+
+def test_compliance_overview_summarizes_expiry_windows(api_client_and_sessions):
+    from datetime import date, timedelta
+
+    from app.models.evidence import ApplicationEvidence
+
+    client, session_factory = api_client_and_sessions
+    headers, application_id, _ = _login_and_case(client, session_factory, "005")
+    today = date.today()
+    with session_factory() as db:
+        db.add_all([
+            ApplicationEvidence(
+                application_id=application_id, title="Expired certificate", category="fire_safety",
+                expires_on=today - timedelta(days=2),
+            ),
+            ApplicationEvidence(
+                application_id=application_id, title="Urgent certificate", category="accreditation",
+                expires_on=today + timedelta(days=1),
+            ),
+            ApplicationEvidence(
+                application_id=application_id, title="Upcoming certificate", category="other",
+                expires_on=today + timedelta(days=20),
+            ),
+            ApplicationEvidence(
+                application_id=application_id, title="Undated record", category="other",
+            ),
+        ])
+        db.commit()
+
+    response = client.get("/api/v1/compliance/overview", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_evidence"] == 4
+    assert payload["expired"] == 1
+    assert payload["due_within_1_day"] == 1
+    assert payload["due_within_30_days"] == 1
+    assert payload["without_expiry"] == 1
+    assert payload["warning_windows_days"] == [30, 7, 1]
+    assert "not official AICTE deadlines" in payload["warning_source"]
+
+
+def test_compliance_overview_only_includes_visible_applications(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    headers_a, _, _ = _login_and_case(client, session_factory, "006")
+    _, application_b, _ = _login_and_case(client, session_factory, "007")
+    from app.models.evidence import ApplicationEvidence
+
+    with session_factory() as db:
+        db.add(ApplicationEvidence(
+            application_id=application_b, title="Private evidence", category="other",
+        ))
+        db.commit()
+
+    response = client.get("/api/v1/compliance/overview", headers=headers_a)
+    assert response.status_code == 200
+    assert response.json()["total_evidence"] == 0
+    assert response.json()["alerts"] == []
