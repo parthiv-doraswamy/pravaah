@@ -92,6 +92,33 @@ export type PolicyVersion = {
   created_at: string
 }
 
+
+export type EvidenceAlert = {
+  evidence_id: string
+  application_id: string
+  application_number: string
+  application_title: string
+  title: string
+  category: string
+  policy_key: string | null
+  expires_on: string
+  days_remaining: number
+  severity: 'expired' | 'urgent' | 'warning' | 'upcoming'
+}
+
+export type ComplianceOverview = {
+  as_of: string
+  total_evidence: number
+  expired: number
+  due_within_1_day: number
+  due_within_7_days: number
+  due_within_30_days: number
+  without_expiry: number
+  alerts: EvidenceAlert[]
+  warning_windows_days: number[]
+  warning_source: string
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '')
 const TOKEN_KEY = 'pravaah_access_token'
 
@@ -141,6 +168,7 @@ export const api = {
   applicationEvents: (id: string) => request<ApplicationEvent[]>(`/applications/${encodeURIComponent(id)}/events`),
   verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
+  complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
   transitionApplication: (id: string, targetStatus: string, expectedStatus: string, reason?: string) =>
