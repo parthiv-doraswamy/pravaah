@@ -82,3 +82,30 @@ def test_institution_user_cannot_queue_notifications(api_client_and_sessions):
     owner_headers, _, _ = make_case(client, db_factory, "003")
     response = client.post("/api/v1/notifications/queue-expiry", headers=owner_headers)
     assert response.status_code == 403
+
+
+
+def test_notification_list_is_private_and_limit_is_bounded(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "004")
+    assert client.post("/api/v1/notifications/queue-expiry", headers=reviewer_headers).status_code == 200
+    owner_items = client.get("/api/v1/notifications?limit=999", headers=owner_headers)
+    assert owner_items.status_code == 200
+    assert len(owner_items.json()) == 1
+
+    reviewer_items = client.get("/api/v1/notifications", headers=reviewer_headers)
+    assert reviewer_items.status_code == 200
+    assert reviewer_items.json() == []
+
+    with db_factory() as db:
+        item = db.query(NotificationRecord).filter_by(application_id=case_id).one()
+        assert item.recipient_user_id is not None
+
+
+def test_notification_read_requires_authentication(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    owner_headers, reviewer_headers, _ = make_case(client, db_factory, "005")
+    assert client.post("/api/v1/notifications/queue-expiry", headers=reviewer_headers).status_code == 200
+    item = client.get("/api/v1/notifications", headers=owner_headers).json()[0]
+    response = client.post(f"/api/v1/notifications/{item['id']}/read")
+    assert response.status_code == 401
