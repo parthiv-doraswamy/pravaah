@@ -266,3 +266,67 @@ def test_inactive_user_cannot_login_or_reuse_existing_token(api_client_and_sessi
 
     stale_token_profile = client.get("/api/v1/auth/me", headers=token_headers)
     assert stale_token_profile.status_code == 401
+
+
+
+def test_application_registry_search_status_filter_and_pagination(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    institution_id, _ = create_institution_user(
+        session_factory,
+        email="registry-filters@example.test",
+        code="REGISTRY-FILTERS",
+        name="Registry Filters",
+    )
+    with session_factory() as db:
+        db.add_all(
+            [
+                Application(
+                    application_number="PVH-FILTER-001",
+                    title="Engineering programme",
+                    status="draft",
+                    institution_id=institution_id,
+                ),
+                Application(
+                    application_number="PVH-FILTER-002",
+                    title="Engineering renewal",
+                    status="submitted",
+                    institution_id=institution_id,
+                ),
+                Application(
+                    application_number="PVH-FILTER-003",
+                    title="Management programme",
+                    status="draft",
+                    institution_id=institution_id,
+                ),
+            ]
+        )
+        db.commit()
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "registry-filters@example.test", "password": "Test-password-123!"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    search = client.get("/api/v1/applications?q=Engineering", headers=headers)
+    assert search.status_code == 200
+    assert search.json()["total"] == 2
+    assert {item["application_number"] for item in search.json()["items"]} == {
+        "PVH-FILTER-001",
+        "PVH-FILTER-002",
+    }
+
+    filtered = client.get("/api/v1/applications?status=draft", headers=headers)
+    assert filtered.status_code == 200
+    assert filtered.json()["total"] == 2
+    assert all(item["status"] == "draft" for item in filtered.json()["items"])
+
+    page = client.get("/api/v1/applications?page=1&page_size=1", headers=headers)
+    assert page.status_code == 200
+    assert page.json()["page"] == 1
+    assert page.json()["page_size"] == 1
+    assert page.json()["total"] == 3
+    assert len(page.json()["items"]) == 1
+
+    invalid_page_size = client.get("/api/v1/applications?page_size=101", headers=headers)
+    assert invalid_page_size.status_code == 422
