@@ -106,6 +106,18 @@ export type EvidenceAlert = {
   severity: 'expired' | 'urgent' | 'warning' | 'upcoming'
 }
 
+export type ComplianceEscalation = {
+  id: string
+  application_id: string
+  evidence_id: string
+  escalation_type: string
+  status: string
+  severity: string
+  summary: string
+  triggered_at: string
+  resolved_at: string | null
+}
+
 export type ComplianceOverview = {
   as_of: string
   total_evidence: number
@@ -197,6 +209,8 @@ export const api = {
   verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
   complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
+  escalations: (openOnly = true) => request<ComplianceEscalation[]>(`/compliance/escalations?open_only=${openOnly}`),
+  resolveEscalation: (id: string) => request<ComplianceEscalation>(`/compliance/escalations/${encodeURIComponent(id)}/resolve`, { method: 'POST' }),
   notifications: (unreadOnly = false) => request<NotificationRecord[]>(`/notifications?unread_only=${unreadOnly}&limit=50`),
   markNotificationRead: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
   queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
