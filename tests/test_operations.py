@@ -1,6 +1,6 @@
 """Integration tests for role-scoped operations dashboard metrics."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from app.auth.security import hash_password
 from app.models.core import Application, Institution, User
@@ -93,7 +93,7 @@ def test_operations_metrics_are_aggregated_and_institution_scoped(api_client_and
             ),
             EVCVisit(
                 application_id=own_case.id,
-                scheduled_for=__import__("datetime").datetime.now(__import__("datetime").UTC) - timedelta(days=1),
+                scheduled_for=datetime.now(UTC) - timedelta(days=1),
                 mode="virtual",
                 status="completed",
                 report_status="draft",
