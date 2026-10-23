@@ -95,6 +95,20 @@ test('institution can sign in and create a draft application', async ({ page }) 
       return
     }
 
+    if (path === '/operations/inbox') {
+      await route.fulfill({ json: {
+        as_of: '2026-10-23', total: 1, by_priority: { high: 0, medium: 0, low: 1 },
+        by_type: { application_workflow: 1 }, items: [{
+          task_id: 'application:30000000-0000-4000-8000-000000000001', task_type: 'application_workflow',
+          title: 'Complete draft application', description: 'Finish the draft and submit it for scrutiny',
+          priority: 'low', status: 'draft', application_id: initialApplication.id,
+          application_number: initialApplication.application_number, application_title: initialApplication.title,
+          institution_name: 'Demo Institution', created_at: '2026-10-20', due_date: null, action_view: 'detail',
+        }],
+      } })
+      return
+    }
+
     if (path === '/compliance/overview') {
       await route.fulfill({ json: {
         as_of: '2026-10-23', total_evidence: 0, expired: 0, due_within_1_day: 0,
@@ -150,6 +164,10 @@ test('institution can sign in and create a draft application', async ({ page }) 
     title: 'New engineering programme',
     summary: 'Browser-tested draft intake.',
   })
+
+  await page.getByRole('button', { name: 'Task inbox' }).click()
+  await expect(page.getByRole('heading', { name: 'Prioritized task list' })).toBeVisible()
+  await expect(page.getByText('Complete draft application')).toBeVisible()
 })
 
 
