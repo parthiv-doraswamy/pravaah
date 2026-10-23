@@ -26,6 +26,21 @@ export type ApplicationPage = {
   total: number
 }
 
+export type OperationsMetrics = {
+  as_of: string
+  total_applications: number
+  active_applications: number
+  awaiting_review: number
+  completed_applications: number
+  applications_by_status: Record<string, number>
+  submissions_pending_review: number
+  expired_evidence: number
+  evidence_due_within_7_days: number
+  open_escalations: number
+  failed_notifications: number
+  evc_reports_pending: number
+}
+
 export type TokenResponse = {
   access_token: string
   token_type: string
@@ -270,6 +285,7 @@ export const api = {
   verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
   complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
+  operationsMetrics: () => request<OperationsMetrics>('/operations/metrics'),
   submissions: (applicationId: string) => request<ComplianceSubmission[]>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`),
   createSubmission: (applicationId: string, payload: { submission_type: string; title: string; declaration: string; evidence_ids: string[] }) =>
     request<ComplianceSubmission>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`, { method: 'POST', body: JSON.stringify(payload) }),
