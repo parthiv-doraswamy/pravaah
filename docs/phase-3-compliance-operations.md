@@ -37,3 +37,16 @@ Run `pytest tests/test_compliance_submissions.py` and `ruff check app tests`, th
 ### Verification
 - Added integration coverage for eligibility state, active-visit conflicts, and duplicate-schedule rejection.
 - Run `pytest tests/test_evc.py`, `ruff check app tests`, frontend production build, and the full CI suite.
+
+
+## Chunk 4: Evidence renewal, versioning, and expiry
+
+- Evidence records now carry a version number, a link to the prior record, and a lifecycle state (`current` or `replaced`). Expiry remains derived from the recorded expiry date; a replaced record is retained for history.
+- Added `POST /api/v1/applications/{application_id}/evidence/{evidence_id}/renewals`. It is access-scoped, rejects finalized applications and already-replaced versions, requires a new future expiry date, and creates the next linked version.
+- Renewal writes an `evidence_renewed` application audit event. The prior metadata remains available and its lifecycle state becomes `replaced`; attachments and prior audit references are not deleted.
+- The evidence workspace now displays version/lifecycle lineage and submits the renewal form to the dedicated renewal endpoint instead of creating an unrelated record.
+- Expiry alerts and overview continue to derive expired/near-expiry state from dates and existing configurable demo warning windows. These windows are illustrative, not official AICTE deadlines.
+
+### Verification
+- Added tests for renewal lineage, preserving the previous reference, event-chain history, duplicate renewal rejection, and expired renewal date rejection.
+- Run `pytest tests/test_evidence.py tests/test_evidence_attachments.py tests/test_evidence_integrity.py`, `ruff check app tests`, frontend production build, and the full CI suite.
