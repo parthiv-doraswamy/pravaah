@@ -316,3 +316,39 @@ def test_upload_removes_partial_file_when_disk_write_fails(api_client_and_sessio
 
         assert db.scalars(select(EvidenceAttachment)).all() == []
 
+
+
+def test_upload_is_rejected_after_application_finalization(api_client_and_sessions, tmp_path, monkeypatch):
+    from app.core.config import Settings
+    import app.api.v1.routes.evidence as evidence_routes
+    from app.models.evidence_attachment import EvidenceAttachment
+
+    client, session_factory = api_client_and_sessions
+    monkeypatch.setattr(
+        evidence_routes,
+        "get_settings",
+        lambda: Settings(evidence_storage_dir=str(tmp_path), evidence_max_upload_bytes=1024),
+    )
+    content = b"%PDF-1.4\\nfinalized-case attachment\\n%%EOF"
+
+    for suffix, final_status in (("approved", "approved"), ("rejected", "rejected")):
+        email = f"finalized-{suffix}@example.test"
+        application_id = _setup(session_factory, email)
+        headers = {"Authorization": f"Bearer {_login(client, email)}"}
+        evidence_id = _create_evidence(client, headers, application_id)
+        with session_factory() as db:
+            application = db.query(Application).filter_by(id=application_id).one()
+            application.status = final_status
+            db.commit()
+
+        response = client.post(
+            f"/api/v1/applications/{application_id}/evidence/{evidence_id}/attachments",
+            headers=headers,
+            files={"file": ("finalized.pdf", content, "application/pdf")},
+        )
+        assert response.status_code == 409, response.text
+        assert "finalized" in response.json()["detail"].lower()
+        with session_factory() as db:
+            assert db.query(EvidenceAttachment).filter_by(application_id=application_id).count() == 0
+
+    assert not [path for path in tmp_path.rglob("*") if path.is_file()]
