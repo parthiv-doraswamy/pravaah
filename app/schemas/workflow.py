@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TransitionRequest(BaseModel):
@@ -34,6 +34,26 @@ class EventChainVerification(BaseModel):
     valid: bool
     event_count: int
     first_invalid_sequence: int | None
+
+
+class PolicyCreate(BaseModel):
+    """Create a new immutable policy version; activation is a separate reviewed action."""
+
+    policy_key: str = Field(min_length=2, max_length=100, pattern=r"^[a-z][a-z0-9_.-]*$")
+    version: int = Field(ge=1)
+    title: str = Field(min_length=3, max_length=240)
+    description: str = Field(min_length=1, max_length=5000)
+    effective_from: datetime
+    rules: dict
+    rules_schema_version: int = Field(default=1, ge=1)
+    source_label: str = Field(default="PRAVAAH synthetic demo policy", min_length=3, max_length=240)
+
+    @field_validator("effective_from")
+    @classmethod
+    def effective_from_must_be_timezone_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("effective_from must include a timezone")
+        return value
 
 
 class PolicyResponse(BaseModel):
