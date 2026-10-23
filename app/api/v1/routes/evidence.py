@@ -21,6 +21,8 @@ from app.schemas.evidence import EvidenceAttachmentResponse, EvidenceCreate, Evi
 from app.services.workflow import append_event
 
 router = APIRouter()
+
+
 def _visible_application(db: Session, user: User, application_id: UUID) -> Application:
     application = db.scalar(scoped_applications_statement(user).where(Application.id == application_id))
     if application is None:
