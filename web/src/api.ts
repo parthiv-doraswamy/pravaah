@@ -60,6 +60,9 @@ export type ApplicationEvidence = {
   title: string
   category: string
   reference_number: string | null
+  version: number
+  supersedes_evidence_id: string | null
+  lifecycle_status: "current" | "replaced"
   issued_on: string | null
   expires_on: string | null
   policy_key: string | null
@@ -281,6 +284,7 @@ export const api = {
   queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
+  renewEvidence: (applicationId: string, evidenceId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/renewals`, { method: 'POST', body: JSON.stringify(payload) }),
   evidenceAttachments: (applicationId: string, evidenceId: string) =>
     request<EvidenceAttachment[]>(`/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/attachments`),
   uploadEvidenceAttachment: async (applicationId: string, evidenceId: string, file: File): Promise<EvidenceAttachment> => {
