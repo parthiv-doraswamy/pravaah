@@ -45,6 +45,30 @@ export type PendencyItem = { application_id: string; application_number: string;
 export type PendencyStatusSummary = { status: string; count: number; oldest_days: number; average_days: number }
 export type PendencyAnalytics = { as_of: string; total_pending: number; aging_buckets: Record<string, number>; by_status: PendencyStatusSummary[]; oldest_items: PendencyItem[] }
 
+export type TaskInboxItem = {
+  task_id: string
+  task_type: string
+  title: string
+  description: string
+  priority: 'high' | 'medium' | 'low'
+  status: string
+  application_id: string
+  application_number: string
+  application_title: string
+  institution_name: string
+  created_at: string
+  due_date: string | null
+  action_view: 'applications' | 'detail' | 'compliance' | 'evc' | 'notifications'
+}
+
+export type TaskInbox = {
+  as_of: string
+  total: number
+  by_priority: Record<string, number>
+  by_type: Record<string, number>
+  items: TaskInboxItem[]
+}
+
 export type TokenResponse = {
   access_token: string
   token_type: string
@@ -291,6 +315,7 @@ export const api = {
   complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
   operationsMetrics: () => request<OperationsMetrics>('/operations/metrics'),
   pendencyAnalytics: () => request<PendencyAnalytics>('/operations/pendency'),
+  taskInbox: () => request<TaskInbox>('/operations/inbox'),
   submissions: (applicationId: string) => request<ComplianceSubmission[]>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`),
   createSubmission: (applicationId: string, payload: { submission_type: string; title: string; declaration: string; evidence_ids: string[] }) =>
     request<ComplianceSubmission>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`, { method: 'POST', body: JSON.stringify(payload) }),
