@@ -448,6 +448,52 @@ function App() {
     }
   }
 
+  async function handleSubmitUndertaking(event: FormEvent) {
+    event.preventDefault()
+    if (!selectedApplication || !undertakingEvidenceIds.length || undertakingDeclaration.trim().length < 20) return
+    setSubmissionBusy(true)
+    try {
+      const payload = { submission_type: undertakingType, title: undertakingTitle.trim(), declaration: undertakingDeclaration.trim(), evidence_ids: undertakingEvidenceIds }
+      if (correctionForId) await api.resubmitSubmission(correctionForId, payload)
+      else await api.createSubmission(selectedApplication.id, payload)
+      setSubmissions(await api.submissions(selectedApplication.id))
+      setCorrectionForId(null)
+      setUndertakingDeclaration('')
+      setReviewNotes('')
+      setNotice(correctionForId ? 'Corrected undertaking submitted as a new version.' : 'Compliance undertaking submitted.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not submit the compliance undertaking.')
+    } finally {
+      setSubmissionBusy(false)
+    }
+  }
+
+  async function handleReviewUndertaking(item: ComplianceSubmission, decision: 'accepted' | 'changes_requested' | 'rejected') {
+    if (!selectedApplication) return
+    setSubmissionBusy(true)
+    try {
+      await api.reviewSubmission(item.id, decision, reviewNotes.trim() || undefined)
+      setSubmissions(await api.submissions(selectedApplication.id))
+      setCaseEvents(await api.applicationEvents(selectedApplication.id))
+      setEventVerification(await api.verifyEvents(selectedApplication.id))
+      setReviewNotes('')
+      setNotice('Compliance submission review recorded.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not record the submission review.')
+    } finally {
+      setSubmissionBusy(false)
+    }
+  }
+
+  function handleStartCorrection(item: ComplianceSubmission) {
+    setCorrectionForId(item.id)
+    setUndertakingType(item.submission_type)
+    setUndertakingTitle(item.title)
+    setUndertakingDeclaration(item.declaration)
+    setUndertakingEvidenceIds(item.evidence_ids)
+    setNotice('Correction form loaded. Update the declaration and evidence before resubmitting.')
+  }
+
   async function handleRegisterEvidence(event: FormEvent) {
     event.preventDefault()
     if (!selectedApplication || evidenceTitle.trim().length < 2) return
