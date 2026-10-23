@@ -154,3 +154,70 @@ def test_notification_read_requires_authentication(api_client_and_sessions):
     item = client.get("/api/v1/notifications", headers=owner_headers).json()[0]
     response = client.post(f"/api/v1/notifications/{item['id']}/read")
     assert response.status_code == 401
+
+
+def test_notification_operations_console_summarizes_and_retries_visible_failed_delivery(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "OPS-001")
+    assert client.post("/api/v1/notifications/queue-expiry", headers=reviewer_headers).status_code == 200
+    with db_factory() as db:
+        item = db.query(NotificationRecord).filter_by(application_id=case_id).one()
+        item.delivery_status = "failed"
+        item.attempt_count = 5
+        item.max_attempts = 5
+        item.last_error = "Provider connection failed; credentials redacted."
+        notification_id = item.id
+        db.commit()
+
+    response = client.get("/api/v1/notifications/operations", headers=reviewer_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["failed"] == 1
+    assert payload["retry_ready"] == 1
+    assert payload["exhausted"] == 0
+    assert payload["by_status"]["failed"] == 1
+    assert payload["items"][0]["application_number"] == "PVH-NT-OPS-001"
+    assert payload["items"][0]["recipient_name"] == "Institution User"
+
+    retried = client.post(
+        f"/api/v1/notifications/operations/{notification_id}/retry",
+        headers=reviewer_headers,
+    )
+    assert retried.status_code == 200
+    assert retried.json()["delivery_status"] == "pending"
+    assert retried.json()["attempt_count"] == 5
+    assert retried.json()["max_attempts"] == 6
+
+    with db_factory() as db:
+        event = db.query(ApplicationEvent).filter_by(
+            application_id=case_id, event_type="notification_delivery_retry_requested"
+        ).one()
+        assert event.event_metadata["source"] == "operations_console"
+
+
+def test_notification_operations_console_requires_operations_role_and_auth(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    owner_headers, _, _ = make_case(client, db_factory, "OPS-002")
+    assert client.get("/api/v1/notifications/operations").status_code == 401
+    denied = client.get("/api/v1/notifications/operations", headers=owner_headers)
+    assert denied.status_code == 403
+
+
+def test_notification_operations_retry_rejects_pending_and_hidden_records(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "OPS-003")
+    assert client.post("/api/v1/notifications/queue-expiry", headers=reviewer_headers).status_code == 200
+    with db_factory() as db:
+        item = db.query(NotificationRecord).filter_by(application_id=case_id).one()
+        notification_id = item.id
+    pending = client.post(
+        f"/api/v1/notifications/operations/{notification_id}/retry",
+        headers=reviewer_headers,
+    )
+    assert pending.status_code == 409
+    denied = client.post(
+        f"/api/v1/notifications/operations/{notification_id}/retry",
+        headers=owner_headers,
+    )
+    assert denied.status_code == 403
