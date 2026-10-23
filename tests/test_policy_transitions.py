@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
