@@ -1,6 +1,5 @@
 """Read-only compliance overview derived from recorded evidence expiry dates."""
 
-from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,13 +9,14 @@ from sqlalchemy.orm import Session
 from app.api.v1.routes.applications import scoped_applications_statement
 from app.auth.dependencies import get_current_user, require_roles
 from app.auth.permissions import COMPLIANCE_ESCALATION_RESOLVER_ROLES
+from app.core.clock import utc_now, utc_today
 from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evidence import ApplicationEvidence
 from app.models.escalation import ComplianceEscalation
+from app.schemas.compliance import ComplianceOverview, EvidenceAlert
 from app.schemas.escalations import EscalationResponse
 from app.services.workflow import append_event
-from app.schemas.compliance import ComplianceOverview, EvidenceAlert
 
 router = APIRouter()
 
@@ -27,7 +27,7 @@ def compliance_overview(
     user: User = Depends(get_current_user),
 ) -> ComplianceOverview:
     """Return a scoped expiry overview; warning windows are synthetic demo defaults."""
-    today = date.today()
+    today = utc_today()
     visible_applications = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
     rows = db.execute(
         select(ApplicationEvidence, Application.application_number, Application.title)
@@ -84,7 +84,6 @@ def compliance_overview(
     )
 
 
-
 @router.get("/escalations", response_model=list[EscalationResponse], summary="List compliance escalations in the current user's scope")
 def list_escalations(
     open_only: bool = True,
@@ -123,7 +122,7 @@ def resolve_escalation(
     if escalation is None:
         raise HTTPException(status_code=404, detail="Escalation not found")
     if escalation.status != "resolved":
-        now = datetime.now(UTC)
+        now = utc_now()
         escalation.status = "resolved"
         escalation.resolved_at = now
         application = db.get(Application, escalation.application_id)
