@@ -155,7 +155,12 @@ async def upload_evidence_attachment(
 ) -> EvidenceAttachment:
     if user.role not in _EVIDENCE_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="Your role cannot upload evidence files")
-    _visible_application(db, user, application_id)
+    application = _visible_application(db, user, application_id)
+    if application.status in {"approved", "rejected"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Evidence attachments cannot be added after the application is finalized",
+        )
     evidence = db.scalar(select(ApplicationEvidence).where(
         ApplicationEvidence.id == evidence_id,
         ApplicationEvidence.application_id == application_id,
