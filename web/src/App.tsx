@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EvidenceAttachment, type ComplianceSubmission, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
 type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
@@ -93,6 +93,8 @@ function App() {
   const [showEvcForm, setShowEvcForm] = useState(false)
   const [savingEvcVisit, setSavingEvcVisit] = useState(false)
   const [evcApplicationId, setEvcApplicationId] = useState('')
+  const [evcEligibility, setEvcEligibility] = useState<EVCEligibility | null>(null)
+  const [loadingEvcEligibility, setLoadingEvcEligibility] = useState(false)
   const [evcScheduledFor, setEvcScheduledFor] = useState('')
   const [evcMode, setEvcMode] = useState<'onsite' | 'virtual'>('onsite')
   const [evcLocation, setEvcLocation] = useState('')
@@ -318,6 +320,20 @@ function App() {
 
   const canScheduleEvc = ['evc_coordinator', 'bureau_officer', 'policy_admin', 'system_admin'].includes(user?.role || '')
 
+  async function handleSelectEvcApplication(applicationId: string) {
+    setEvcApplicationId(applicationId)
+    setEvcEligibility(null)
+    if (!applicationId) return
+    setLoadingEvcEligibility(true)
+    try {
+      setEvcEligibility(await api.evcEligibility(applicationId))
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not check EVC eligibility.')
+    } finally {
+      setLoadingEvcEligibility(false)
+    }
+  }
+
   async function handleScheduleEvcVisit(event: FormEvent) {
     event.preventDefault()
     if (!evcApplicationId || !evcScheduledFor) return
@@ -333,6 +349,7 @@ function App() {
       })
       setShowEvcForm(false)
       setEvcApplicationId('')
+      setEvcEligibility(null)
       setEvcScheduledFor('')
       setEvcMode('onsite')
       setEvcLocation('')
@@ -837,7 +854,7 @@ function App() {
               <div className="evc-form-heading"><div><h3>Schedule a verification visit</h3><p>Select an application in an active review stage and add the visit details.</p></div><span className="evidence-count">New visit</span></div>
               <div className="evc-form-grid">
                 <label>Application
-                  <select value={evcApplicationId} onChange={event => setEvcApplicationId(event.target.value)} required>
+                  <select value={evcApplicationId} onChange={event => void handleSelectEvcApplication(event.target.value)} required>
                     <option value="">Choose an application…</option>
                     {applications.filter(item => ['submitted', 'under_scrutiny', 'recommended_for_approval', 'pending_authority_decision', 'evc_pending', 'evc_scheduled'].includes(item.status)).map(item => <option key={item.id} value={item.id}>{item.application_number} · {item.title}</option>)}
                   </select>
@@ -847,7 +864,8 @@ function App() {
                 {evcMode === 'onsite' && <label>Visit location<input value={evcLocation} onChange={event => setEvcLocation(event.target.value)} placeholder="Campus address or meeting location" maxLength={240} required /></label>}
                 <label className="evc-notes-field">Coordinator notes<textarea value={evcNotes} onChange={event => setEvcNotes(event.target.value)} rows={2} maxLength={2000} placeholder="Optional agenda, preparation notes or joining details"/></label>
               </div>
-              <div className="evc-form-actions"><span>Saved visits are appended to the application audit timeline.</span><button className="primary-button" disabled={savingEvcVisit || !evcApplicationId || !evcScheduledFor || (evcMode === 'onsite' && !evcLocation.trim())}>{savingEvcVisit ? 'Scheduling…' : 'Confirm visit'}</button></div>
+              {evcApplicationId && <div className="evc-eligibility-note" role="status">{loadingEvcEligibility ? 'Checking scheduling eligibility…' : evcEligibility ? evcEligibility.eligible ? 'Eligible for scheduling. One active visit per application is allowed.' : evcEligibility.reasons.join(' ') : 'Eligibility could not be confirmed yet.'}</div>}
+              <div className="evc-form-actions"><span>Saved visits are appended to the application audit timeline.</span><button className="primary-button" disabled={savingEvcVisit || loadingEvcEligibility || !evcEligibility?.eligible || !evcApplicationId || !evcScheduledFor || (evcMode === 'onsite' && !evcLocation.trim())}>{savingEvcVisit ? 'Scheduling…' : 'Confirm visit'}</button></div>
             </form>}
             <div className="panel evc-schedule-panel">
               <div className="panel-heading"><div><h2>Visit register</h2><p>Visits in your current application access scope</p></div><div className="evc-register-actions"><span className="evidence-count">{evcVisits.length} visits</span><select value={evcStatusFilter} onChange={event => setEvcStatusFilter(event.target.value)} aria-label="Filter EVC visits by status"><option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="">All statuses</option></select></div></div>
