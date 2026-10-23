@@ -188,3 +188,9 @@ def test_pendency_analytics_reports_aging_and_respects_institution_scope(api_cli
         "PVH-PEND-RECENT",
     ]
     assert {item["status"] for item in payload["by_status"]} == {"committee_review", "under_scrutiny"}
+
+
+def test_pendency_analytics_requires_authentication(api_client_and_sessions):
+    client, _ = api_client_and_sessions
+    response = client.get("/api/v1/operations/pendency")
+    assert response.status_code == 401
