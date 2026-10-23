@@ -7,6 +7,14 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class EVCEligibilityResponse(BaseModel):
+    application_id: UUID
+    eligible: bool
+    reasons: list[str]
+    active_visit_id: UUID | None
+    eligible_application_statuses: list[str]
+
+
 class EVCVisitCreate(BaseModel):
     application_id: UUID
     scheduled_for: datetime

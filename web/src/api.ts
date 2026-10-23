@@ -60,6 +60,9 @@ export type ApplicationEvidence = {
   title: string
   category: string
   reference_number: string | null
+  version: number
+  supersedes_evidence_id: string | null
+  lifecycle_status: "current" | "replaced"
   issued_on: string | null
   expires_on: string | null
   policy_key: string | null
@@ -79,6 +82,25 @@ export type EvidenceAttachment = {
   sha256_hex: string
   uploaded_by_user_id: string | null
   created_at: string
+}
+
+export type ComplianceSubmission = {
+  id: string
+  application_id: string
+  submission_type: string
+  title: string
+  declaration: string
+  evidence_ids: string[]
+  status: 'submitted' | 'accepted' | 'changes_requested' | 'rejected'
+  version: number
+  submitted_by_user_id: string | null
+  submitted_at: string | null
+  reviewed_by_user_id: string | null
+  reviewed_at: string | null
+  review_notes: string | null
+  supersedes_submission_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type EvidenceCreate = {
@@ -170,6 +192,14 @@ export type NotificationQueueResult = {
   detail: string
 }
 
+export type EVCEligibility = {
+  application_id: string
+  eligible: boolean
+  reasons: string[]
+  active_visit_id: string | null
+  eligible_application_statuses: string[]
+}
+
 export type EVCVisit = {
   id: string
   application_id: string
@@ -240,13 +270,22 @@ export const api = {
   verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
   complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
+  submissions: (applicationId: string) => request<ComplianceSubmission[]>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`),
+  createSubmission: (applicationId: string, payload: { submission_type: string; title: string; declaration: string; evidence_ids: string[] }) =>
+    request<ComplianceSubmission>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`, { method: 'POST', body: JSON.stringify(payload) }),
+  reviewSubmission: (id: string, decision: 'accepted' | 'changes_requested' | 'rejected', notes?: string) =>
+    request<ComplianceSubmission>(`/compliance/submissions/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify({ decision, notes: notes || null }) }),
+  resubmitSubmission: (id: string, payload: { submission_type: string; title: string; declaration: string; evidence_ids: string[] }) =>
+    request<ComplianceSubmission>(`/compliance/submissions/${encodeURIComponent(id)}/resubmit`, { method: 'POST', body: JSON.stringify(payload) }),
   escalations: (openOnly = true) => request<ComplianceEscalation[]>(`/compliance/escalations?open_only=${openOnly}`),
   resolveEscalation: (id: string) => request<ComplianceEscalation>(`/compliance/escalations/${encodeURIComponent(id)}/resolve`, { method: 'POST' }),
   notifications: (unreadOnly = false) => request<NotificationRecord[]>(`/notifications?unread_only=${unreadOnly}&limit=50`),
   markNotificationRead: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+  retryNotification: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
+  renewEvidence: (applicationId: string, evidenceId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/renewals`, { method: 'POST', body: JSON.stringify(payload) }),
   evidenceAttachments: (applicationId: string, evidenceId: string) =>
     request<EvidenceAttachment[]>(`/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/attachments`),
   uploadEvidenceAttachment: async (applicationId: string, evidenceId: string, file: File): Promise<EvidenceAttachment> => {
@@ -271,6 +310,7 @@ export const api = {
     if (!response.ok) throw new Error(`Download failed (${response.status})`)
     return response.blob()
   },
+  evcEligibility: (applicationId: string) => request<EVCEligibility>(`/evc/applications/${encodeURIComponent(applicationId)}/eligibility`),
   evcVisits: (options: { status?: string; applicationId?: string } = {}) => {
     const params = new URLSearchParams()
     if (options.status) params.set('status_filter', options.status)

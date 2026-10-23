@@ -284,3 +284,50 @@ def test_evc_report_links_only_evidence_from_its_application(api_client_and_sess
     payload["evidence_ids"] = [str(uuid4())]
     invalid = client.put(f"/api/v1/evc/visits/{visit_id}/report", headers=headers, json=payload)
     assert invalid.status_code == 422
+
+
+
+def test_evc_eligibility_reports_stage_and_existing_visit_conflicts(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    _, application_id = _scheduler(session_factory, email="evc-eligibility@example.test")
+    token = _login(client, "evc-eligibility@example.test")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    eligible = client.get(
+        f"/api/v1/evc/applications/{application_id}/eligibility",
+        headers=headers,
+    )
+    assert eligible.status_code == 200, eligible.text
+    assert eligible.json()["eligible"] is True
+    assert eligible.json()["reasons"] == []
+
+    created = client.post(
+        "/api/v1/evc/visits",
+        headers=headers,
+        json={
+            "application_id": str(application_id),
+            "scheduled_for": (datetime.now(UTC) + timedelta(days=4)).isoformat(),
+            "mode": "virtual",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    blocked = client.get(
+        f"/api/v1/evc/applications/{application_id}/eligibility",
+        headers=headers,
+    )
+    assert blocked.status_code == 200, blocked.text
+    assert blocked.json()["eligible"] is False
+    assert blocked.json()["active_visit_id"] == created.json()["id"]
+    assert any("already exists" in reason for reason in blocked.json()["reasons"])
+
+    duplicate = client.post(
+        "/api/v1/evc/visits",
+        headers=headers,
+        json={
+            "application_id": str(application_id),
+            "scheduled_for": (datetime.now(UTC) + timedelta(days=6)).isoformat(),
+            "mode": "virtual",
+        },
+    )
+    assert duplicate.status_code == 409

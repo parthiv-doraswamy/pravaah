@@ -102,6 +102,51 @@ def test_notification_list_is_private_and_limit_is_bounded(api_client_and_sessio
         assert item.recipient_user_id is not None
 
 
+def test_failed_notification_can_be_retried_without_erasing_attempt_history(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "006")
+    assert client.post("/api/v1/notifications/queue-expiry", headers=reviewer_headers).status_code == 200
+    with db_factory() as db:
+        item = db.query(NotificationRecord).filter_by(application_id=case_id).one()
+        item.delivery_status = "failed"
+        item.attempt_count = 5
+        item.max_attempts = 5
+        item.last_error = "Email delivery failed (OSError); provider details redacted."
+        notification_id = item.id
+        db.commit()
+
+    response = client.post(f"/api/v1/notifications/{notification_id}/retry", headers=owner_headers)
+    assert response.status_code == 200
+    assert response.json()["delivery_status"] == "pending"
+    assert response.json()["attempt_count"] == 5
+    assert response.json()["max_attempts"] == 6
+    assert response.json()["last_error"] is None
+    assert response.json()["next_attempt_at"] is not None
+
+    with db_factory() as db:
+        item = db.query(NotificationRecord).filter_by(id=notification_id).one()
+        assert item.attempt_count == 5
+        event = db.query(ApplicationEvent).filter_by(
+            application_id=case_id, event_type="notification_delivery_retry_requested"
+        ).one()
+        assert event.actor_user_id is not None
+        assert event.event_metadata["previous_max_attempts"] == 5
+        assert event.event_metadata["max_attempts"] == 6
+
+
+def test_notification_retry_rejects_pending_and_other_users(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "007")
+    assert client.post("/api/v1/notifications/queue-expiry", headers=reviewer_headers).status_code == 200
+    with db_factory() as db:
+        item = db.query(NotificationRecord).filter_by(application_id=case_id).one()
+        notification_id = item.id
+    pending = client.post(f"/api/v1/notifications/{notification_id}/retry", headers=owner_headers)
+    assert pending.status_code == 409
+    wrong_owner = client.post(f"/api/v1/notifications/{notification_id}/retry", headers=reviewer_headers)
+    assert wrong_owner.status_code == 404
+
+
 def test_notification_read_requires_authentication(api_client_and_sessions):
     client, db_factory = api_client_and_sessions
     owner_headers, reviewer_headers, _ = make_case(client, db_factory, "005")

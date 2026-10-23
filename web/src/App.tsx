@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EvidenceAttachment, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
 type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
@@ -50,6 +50,15 @@ function App() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null)
   const [caseEvents, setCaseEvents] = useState<ApplicationEvent[]>([])
   const [evidenceItems, setEvidenceItems] = useState<ApplicationEvidence[]>([])
+  const [submissions, setSubmissions] = useState<ComplianceSubmission[]>([])
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false)
+  const [submissionBusy, setSubmissionBusy] = useState(false)
+  const [undertakingType, setUndertakingType] = useState('annual_undertaking')
+  const [undertakingTitle, setUndertakingTitle] = useState('Annual compliance undertaking')
+  const [undertakingDeclaration, setUndertakingDeclaration] = useState('')
+  const [undertakingEvidenceIds, setUndertakingEvidenceIds] = useState<string[]>([])
+  const [reviewNotes, setReviewNotes] = useState('')
+  const [correctionForId, setCorrectionForId] = useState<string | null>(null)
   const [evidenceVisitReferences, setEvidenceVisitReferences] = useState<EVCVisit[]>([])
   const [attachmentsByEvidence, setAttachmentsByEvidence] = useState<Record<string, EvidenceAttachment[]>>({})
   const [uploadingEvidenceId, setUploadingEvidenceId] = useState<string | null>(null)
@@ -63,6 +72,7 @@ function App() {
   const [evidenceExpires, setEvidenceExpires] = useState('')
   const [evidencePolicy, setEvidencePolicy] = useState('')
   const [evidenceNotes, setEvidenceNotes] = useState('')
+  const [renewalEvidenceId, setRenewalEvidenceId] = useState<string | null>(null)
   const [savingEvidence, setSavingEvidence] = useState(false)
   const [eventVerification, setEventVerification] = useState<EventVerification | null>(null)
   const [loadingTimeline, setLoadingTimeline] = useState(false)
@@ -84,6 +94,8 @@ function App() {
   const [showEvcForm, setShowEvcForm] = useState(false)
   const [savingEvcVisit, setSavingEvcVisit] = useState(false)
   const [evcApplicationId, setEvcApplicationId] = useState('')
+  const [evcEligibility, setEvcEligibility] = useState<EVCEligibility | null>(null)
+  const [loadingEvcEligibility, setLoadingEvcEligibility] = useState(false)
   const [evcScheduledFor, setEvcScheduledFor] = useState('')
   const [evcMode, setEvcMode] = useState<'onsite' | 'virtual'>('onsite')
   const [evcLocation, setEvcLocation] = useState('')
@@ -184,19 +196,20 @@ function App() {
     let cancelled = false
     setLoadingTimeline(true)
     setLoadingEvidence(true)
-    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id), api.evidence(selectedApplication.id), api.evcVisits({ applicationId: selectedApplication.id })])
-      .then(async ([events, verification, evidence, visits]) => {
+    setLoadingSubmissions(true)
+    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id), api.evidence(selectedApplication.id), api.evcVisits({ applicationId: selectedApplication.id }), api.submissions(selectedApplication.id)])
+      .then(async ([events, verification, evidence, visits, submissionRecords]) => {
         const attachmentLists = await Promise.all(evidence.map(async item => ({
           id: item.id,
           files: await api.evidenceAttachments(selectedApplication.id, item.id),
         })))
         if (!cancelled) {
-          setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence); setEvidenceVisitReferences(visits)
+          setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence); setEvidenceVisitReferences(visits); setSubmissions(submissionRecords)
           setAttachmentsByEvidence(Object.fromEntries(attachmentLists.map(item => [item.id, item.files])))
         }
       })
       .catch(error => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load the application timeline and evidence.') })
-      .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false) } })
+      .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false); setLoadingSubmissions(false) } })
     return () => { cancelled = true }
   }, [user, view, selectedApplication])
 
@@ -218,6 +231,16 @@ function App() {
       await openAlertApplication(notification.application_id)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not open this notification.')
+    }
+  }
+
+  async function handleRetryNotification(notification: NotificationRecord) {
+    try {
+      const updated = await api.retryNotification(notification.id)
+      setNotifications(items => items.map(item => item.id === updated.id ? updated : item))
+      setNotice('Delivery retry queued. The notification worker will attempt delivery when SMTP is configured.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not retry notification delivery.')
     }
   }
 
@@ -308,6 +331,20 @@ function App() {
 
   const canScheduleEvc = ['evc_coordinator', 'bureau_officer', 'policy_admin', 'system_admin'].includes(user?.role || '')
 
+  async function handleSelectEvcApplication(applicationId: string) {
+    setEvcApplicationId(applicationId)
+    setEvcEligibility(null)
+    if (!applicationId) return
+    setLoadingEvcEligibility(true)
+    try {
+      setEvcEligibility(await api.evcEligibility(applicationId))
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not check EVC eligibility.')
+    } finally {
+      setLoadingEvcEligibility(false)
+    }
+  }
+
   async function handleScheduleEvcVisit(event: FormEvent) {
     event.preventDefault()
     if (!evcApplicationId || !evcScheduledFor) return
@@ -323,6 +360,7 @@ function App() {
       })
       setShowEvcForm(false)
       setEvcApplicationId('')
+      setEvcEligibility(null)
       setEvcScheduledFor('')
       setEvcMode('onsite')
       setEvcLocation('')
@@ -438,6 +476,52 @@ function App() {
     }
   }
 
+  async function handleSubmitUndertaking(event: FormEvent) {
+    event.preventDefault()
+    if (!selectedApplication || !undertakingEvidenceIds.length || undertakingDeclaration.trim().length < 20) return
+    setSubmissionBusy(true)
+    try {
+      const payload = { submission_type: undertakingType, title: undertakingTitle.trim(), declaration: undertakingDeclaration.trim(), evidence_ids: undertakingEvidenceIds }
+      if (correctionForId) await api.resubmitSubmission(correctionForId, payload)
+      else await api.createSubmission(selectedApplication.id, payload)
+      setSubmissions(await api.submissions(selectedApplication.id))
+      setCorrectionForId(null)
+      setUndertakingDeclaration('')
+      setReviewNotes('')
+      setNotice(correctionForId ? 'Corrected undertaking submitted as a new version.' : 'Compliance undertaking submitted.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not submit the compliance undertaking.')
+    } finally {
+      setSubmissionBusy(false)
+    }
+  }
+
+  async function handleReviewUndertaking(item: ComplianceSubmission, decision: 'accepted' | 'changes_requested' | 'rejected') {
+    if (!selectedApplication) return
+    setSubmissionBusy(true)
+    try {
+      await api.reviewSubmission(item.id, decision, reviewNotes.trim() || undefined)
+      setSubmissions(await api.submissions(selectedApplication.id))
+      setCaseEvents(await api.applicationEvents(selectedApplication.id))
+      setEventVerification(await api.verifyEvents(selectedApplication.id))
+      setReviewNotes('')
+      setNotice('Compliance submission review recorded.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not record the submission review.')
+    } finally {
+      setSubmissionBusy(false)
+    }
+  }
+
+  function handleStartCorrection(item: ComplianceSubmission) {
+    setCorrectionForId(item.id)
+    setUndertakingType(item.submission_type)
+    setUndertakingTitle(item.title)
+    setUndertakingDeclaration(item.declaration)
+    setUndertakingEvidenceIds(item.evidence_ids)
+    setNotice('Correction form loaded. Update the declaration and evidence before resubmitting.')
+  }
+
   async function handleRegisterEvidence(event: FormEvent) {
     event.preventDefault()
     if (!selectedApplication || evidenceTitle.trim().length < 2) return
@@ -452,13 +536,15 @@ function App() {
         ...(evidencePolicy.trim() ? { policy_key: evidencePolicy.trim() } : {}),
         ...(evidenceNotes.trim() ? { notes: evidenceNotes.trim() } : {}),
       }
-      await api.registerEvidence(selectedApplication.id, payload)
+      if (renewalEvidenceId) await api.renewEvidence(selectedApplication.id, renewalEvidenceId, payload)
+      else await api.registerEvidence(selectedApplication.id, payload)
       const [evidence, events, verification] = await Promise.all([api.evidence(selectedApplication.id), api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id)])
       setEvidenceItems(evidence)
       setCaseEvents(events)
       setEventVerification(verification)
       setEvidenceTitle(''); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(''); setEvidenceNotes('')
-      setNotice('Evidence metadata registered and added to the audit timeline.')
+      setNotice(renewalEvidenceId ? 'Renewal saved as a new version. The prior evidence metadata and history remain available.' : 'Evidence metadata registered and added to the audit timeline.')
+      setRenewalEvidenceId(null)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not register evidence metadata.')
     } finally {
@@ -648,7 +734,7 @@ function App() {
       </aside>
 
       <main className="main-panel">
-        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" title="Open notifications" onClick={() => { const next = !notificationsOpen; setNotificationsOpen(next); if (next) void loadNotifications() }}><Bell size={18} />{notifications.some(item => !item.read_at) && <i />}</button>{notificationsOpen && <div className="notification-popover"><div className="notification-popover-head"><div><strong>Notifications</strong><span>{notifications.filter(item => !item.read_at).length} unread</span></div><button className="text-button" onClick={() => void loadNotifications()} disabled={loadingNotifications}>Refresh</button></div>{loadingNotifications && notifications.length === 0 ? <div className="notification-empty">Loading notifications…</div> : notifications.length === 0 ? <div className="notification-empty">No notifications yet. Expiry alerts can be queued from Deadlines & compliance.</div> : <div className="notification-list">{notifications.slice(0, 12).map(item => <button className={'notification-row ' + (!item.read_at ? 'unread' : '')} key={item.id} onClick={() => void handleMarkNotificationRead(item)}><span className={'notification-severity ' + item.severity}><Bell size={14}/></span><span className="notification-row-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{formatDate(item.created_at)} · {item.delivery_status}</small></span>{!item.read_at && <i />}</button>)}</div>}</div>}</div><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
+        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" title="Open notifications" onClick={() => { const next = !notificationsOpen; setNotificationsOpen(next); if (next) void loadNotifications() }}><Bell size={18} />{notifications.some(item => !item.read_at) && <i />}</button>{notificationsOpen && <div className="notification-popover"><div className="notification-popover-head"><div><strong>Notifications</strong><span>{notifications.filter(item => !item.read_at).length} unread</span></div><button className="text-button" onClick={() => void loadNotifications()} disabled={loadingNotifications}>Refresh</button></div>{loadingNotifications && notifications.length === 0 ? <div className="notification-empty">Loading notifications…</div> : notifications.length === 0 ? <div className="notification-empty">No notifications yet. Expiry alerts can be queued from Deadlines & compliance.</div> : <div className="notification-list">{notifications.slice(0, 12).map(item => <div className="notification-entry" key={item.id}><button className={'notification-row ' + (!item.read_at ? 'unread' : '')} onClick={() => void handleMarkNotificationRead(item)}><span className={'notification-severity ' + item.severity}><Bell size={14}/></span><span className="notification-row-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{formatDate(item.created_at)} · {item.delivery_status} · {item.attempt_count}/{item.max_attempts} attempts</small>{item.last_error && <small className="notification-delivery-error">{item.last_error}</small>}{item.next_attempt_at && item.delivery_status === 'pending' && <small>Next attempt: {formatDate(item.next_attempt_at)}</small>}</span>{!item.read_at && <i />}</button>{item.delivery_status === 'failed' && <div className="notification-recovery"><span>Delivery failed after {item.attempt_count} attempt(s).</span><button className="text-button" onClick={() => void handleRetryNotification(item)}>Retry delivery</button></div>}</div>)}</div>}</div>}</div><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
 
         <div className="content-area">
           <div className="page-heading"><div><div className="eyebrow">YOUR WORKSPACE <span className="heading-dot">·</span> {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div><h1>{view === 'overview' ? 'Good to see you, ' + user.full_name.split(' ')[0] + '.' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : 'Policy registry'}</h1><p>{view === 'overview' ? 'Here’s the latest view of your approval workflow.' : view === 'applications' ? 'Search, review and manage your application records.' : view === 'detail' ? 'Review the current record and its latest status.' : view === 'compliance' ? 'Monitor recorded evidence expiry dates across your visible applications.' : view === 'evc' ? 'Plan verification visits and keep outcomes traceable.' : 'Review versioned policy records and their configured rules.'}</p></div><div className="heading-actions"><button className="secondary-button" onClick={() => void (view === 'policies' ? loadPolicies() : view === 'compliance' ? loadCompliance() : view === 'evc' ? loadEvcVisits() : loadApplications())} disabled={view === 'policies' ? loadingPolicies : view === 'compliance' ? loadingCompliance : view === 'evc' ? loadingEvcVisits : loadingCases}><Activity size={16} className={(view === 'policies' ? loadingPolicies : view === 'compliance' ? loadingCompliance : view === 'evc' ? loadingEvcVisits : loadingCases) ? 'spin' : ''} /> Refresh</button>{view !== 'policies' && user.role === 'institution_user' && <button className="primary-button" onClick={() => setCreateOpen(true)}><Plus size={17} /> New application</button>}</div></div>
@@ -719,6 +805,18 @@ function App() {
               const targets = config && config.roles.includes(user.role) ? config.targets : []
               return <div className="detail-actions"><div><h3>Workflow actions</h3><p>Actions are limited by role and current status, and rechecked by the server.</p></div>{targets.length ? <><textarea value={transitionReason} onChange={event => setTransitionReason(event.target.value)} rows={2} maxLength={2000} placeholder="Optional note for the audit trail"/><div className="detail-action-buttons">{targets.map(target => <button key={target} className={target === 'rejected' || target === 'returned' ? 'secondary-button' : 'primary-button'} disabled={transitionBusy} onClick={() => void handleTransition(target)}>{transitionBusy ? 'Saving…' : target.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</button>)}</div></> : <p className="no-detail-actions">No action is available for your role in this status.</p>}</div>
             })()}
+            <div className="panel compliance-alerts" style={{ marginBottom: 24 }}>
+              <div className="panel-heading"><div><h2>Compliance undertakings</h2><p>Versioned submissions, reviewer decisions, and correction history</p></div><span className="evidence-count">{submissions.length} versions</span></div>
+              {loadingSubmissions ? <div className="table-state"><span>Loading submissions…</span></div> : submissions.length === 0 ? <div className="empty-state"><strong>No compliance undertakings submitted</strong><p>Choose supporting evidence below to create the first submission.</p></div> : <div className="compliance-alert-list">{submissions.map(item => <article className="compliance-alert-row" key={item.id}><div className="compliance-alert-main"><div className="compliance-alert-title"><strong>{item.title} · v{item.version}</strong><span className={'evidence-expiry ' + (item.status === 'accepted' ? 'valid' : item.status === 'rejected' ? 'expired' : item.status === 'changes_requested' ? 'expiring' : 'valid')}>{item.status.replaceAll('_', ' ')}</span></div><p>{item.submission_type.replaceAll('_', ' ')} · {item.evidence_ids.length} linked evidence item(s) · {item.submitted_at ? formatDate(item.submitted_at) : 'Not submitted'}</p><p>{item.declaration}</p>{item.review_notes && <span className="evidence-date">Reviewer note: {item.review_notes}</span>}{item.supersedes_submission_id && <span className="evidence-date">Corrects version {submissions.find(previous => previous.id === item.supersedes_submission_id)?.version ?? 'prior'}</span>}</div>{item.status === 'submitted' && ['scrutiny_officer', 'regional_officer', 'bureau_officer', 'competent_authority', 'policy_admin', 'system_admin'].includes(user.role) && <div className="detail-action-buttons"><button className="primary-button small-button" disabled={submissionBusy} onClick={() => void handleReviewUndertaking(item, 'accepted')}>Accept</button><button className="secondary-button small-button" disabled={submissionBusy || reviewNotes.trim().length < 3} onClick={() => void handleReviewUndertaking(item, 'changes_requested')}>Request changes</button><button className="secondary-button small-button" disabled={submissionBusy || reviewNotes.trim().length < 3} onClick={() => void handleReviewUndertaking(item, 'rejected')}>Reject</button></div>}{item.status === 'changes_requested' && user.role === 'institution_user' && <button className="primary-button small-button" onClick={() => handleStartCorrection(item)}>Correct and resubmit</button>}</article>)}</div>}
+              {['institution_user', 'scrutiny_officer', 'regional_officer', 'bureau_officer', 'evc_coordinator', 'competent_authority', 'policy_admin', 'system_admin'].includes(user.role) && <form className="evidence-form" onSubmit={handleSubmitUndertaking}>
+                <div className="evc-form-heading"><div><h3>{correctionForId ? 'Correct undertaking' : 'New undertaking'}</h3><p>Attach relevant items to support the declaration. Reviewer decisions remain human-controlled.</p></div>{correctionForId && <button type="button" className="text-button" onClick={() => setCorrectionForId(null)}>Cancel correction</button>}</div>
+                <div className="evidence-form-grid"><label>Submission type<input value={undertakingType} onChange={event => setUndertakingType(event.target.value)} minLength={2} maxLength={80} required disabled={Boolean(correctionForId)}/></label><label>Title<input value={undertakingTitle} onChange={event => setUndertakingTitle(event.target.value)} minLength={3} maxLength={240} required/></label></div>
+                <label>Declaration<textarea value={undertakingDeclaration} onChange={event => setUndertakingDeclaration(event.target.value)} minLength={20} maxLength={10000} rows={3} required placeholder="Confirm the information provided is accurate and complete."/></label>
+                <div className="evc-report-evidence"><div className="evc-report-evidence-heading"><div><strong>Supporting evidence</strong><span>Choose supporting records from this application.</span></div><span className="evc-evidence-count">{undertakingEvidenceIds.length} selected</span></div>{evidenceItems.length === 0 ? <p className="evc-evidence-empty">Register evidence below before submitting an undertaking.</p> : <div className="evc-evidence-options">{evidenceItems.map(item => <label className="evc-evidence-option" key={item.id}><input type="checkbox" checked={undertakingEvidenceIds.includes(item.id)} onChange={event => setUndertakingEvidenceIds(ids => event.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))}/><span className="evc-evidence-option-main"><strong>{item.title}</strong><small>{item.category.replaceAll('_', ' ')}</small></span><span className="evc-evidence-date">{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'No expiry date'}</span></label>)}</div>}</div>
+                {['scrutiny_officer', 'regional_officer', 'bureau_officer', 'competent_authority', 'policy_admin', 'system_admin'].includes(user.role) && <label>Review notes<textarea value={reviewNotes} onChange={event => setReviewNotes(event.target.value)} rows={2} maxLength={3000} placeholder="Required when requesting changes or rejecting"/></label>}
+                <button className="primary-button" disabled={submissionBusy || !undertakingEvidenceIds.length || undertakingTitle.trim().length < 3 || undertakingDeclaration.trim().length < 20 || (correctionForId !== null && user.role !== 'institution_user')}>{submissionBusy ? 'Saving…' : correctionForId ? 'Submit corrected version' : 'Submit undertaking'}</button>
+              </form>}
+            </div>
             <div className="evidence-section">
               <div className="panel-heading"><div><h2>Evidence workspace</h2><p>Manage evidence metadata and private attachments, review expiry dates, and see EVC reports that reference each record.</p></div><span className="evidence-count">{evidenceItems.length} items</span></div>
               <form className="evidence-form" onSubmit={handleRegisterEvidence}>
@@ -731,7 +829,7 @@ function App() {
                   <label>Expiry date<input type="date" value={evidenceExpires} onChange={event => setEvidenceExpires(event.target.value)} min={evidenceIssued || undefined}/></label>
                 </div>
                 <label className="evidence-notes-label">Notes<textarea value={evidenceNotes} onChange={event => setEvidenceNotes(event.target.value)} rows={2} maxLength={3000} placeholder="Optional context for reviewers"/></label>
-                <button className="primary-button" disabled={savingEvidence || evidenceTitle.trim().length < 2}>{savingEvidence ? 'Registering…' : 'Register evidence'}</button>
+                <div className="evidence-form-actions"><span>{renewalEvidenceId ? 'A renewal requires a new expiry date and preserves the prior version.' : 'New evidence is recorded as version 1.'}</span><div>{renewalEvidenceId && <button type="button" className="secondary-button" onClick={() => { setRenewalEvidenceId(null); setEvidenceTitle(''); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(''); setEvidenceNotes('') }}>Cancel renewal</button>}<button className="primary-button" disabled={savingEvidence || evidenceTitle.trim().length < 2 || (Boolean(renewalEvidenceId) && !evidenceExpires)}>{savingEvidence ? 'Saving…' : renewalEvidenceId ? 'Create renewal version' : 'Register evidence'}</button></div></div>
               </form>
               <div className="evidence-list">
                 {loadingEvidence ? <div className="table-state"><div className="loading-line"/><span>Loading evidence register…</span></div> : evidenceItems.length === 0 ? <div className="empty-state"><div className="empty-icon"><FileCheck2 size={20}/></div><strong>No evidence registered yet</strong><p>Add evidence metadata above to start the compliance register.</p></div> : evidenceItems.map(item => {
@@ -740,7 +838,7 @@ function App() {
                   const expiryState = days === null ? 'No expiry date' : days < 0 ? 'Expired' : days <= 30 ? 'Expires soon' : 'Valid'
                   return <article className="evidence-item" key={item.id}>
                     <div className="evidence-file-icon"><FileCheck2 size={18}/></div><div className="evidence-item-main"><div className="evidence-item-heading"><strong>{item.title}</strong><span className={'evidence-expiry ' + (days !== null && days < 0 ? 'expired' : days !== null && days <= 30 ? 'expiring' : 'valid')}>{expiryState}</span></div><p>{item.category.replaceAll('_', ' ')}{item.reference_number ? ' · Ref ' + item.reference_number : ''}{item.policy_key ? ' · Policy ' + item.policy_key : ''}</p>{item.notes && <p className="evidence-notes">{item.notes}</p>}<span className="evidence-date">{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'Expiry not recorded'}{item.issued_on ? ' · Issued ' + formatDate(item.issued_on) : ''}</span>
-                    <div className="evidence-renewal-row"><button type="button" className="text-button" onClick={() => { setEvidenceTitle(item.title + ' — renewal'); setEvidenceCategory(item.category); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(item.policy_key || ''); setEvidenceNotes('Renewal record started from prior evidence ' + item.id.slice(0, 8) + '. Verify the new document details before registering.'); setNotice('Renewal draft prepared. The existing evidence record remains unchanged.') }}>Start renewal record <ArrowRight size={13}/></button><span>Creates a separate record; does not renew or alter the existing document.</span></div>
+                    <div className="evidence-renewal-row">{item.lifecycle_status === 'current' ? <button type="button" className="text-button" onClick={() => { setRenewalEvidenceId(item.id); setEvidenceTitle(item.title); setEvidenceCategory(item.category); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(item.policy_key || ''); setEvidenceNotes('Renewal of evidence version ' + item.version + ' (' + item.id.slice(0, 8) + ').'); setNotice('Renewal draft prepared. Submit the new expiry date to create a linked version.') }}>Start renewal record <ArrowRight size={13}/></button> : <span>This version has been superseded.</span>}<span>Version {item.version} · {item.lifecycle_status === 'replaced' ? 'Superseded' : 'Current version'}</span>{item.supersedes_evidence_id && <span>Supersedes record {item.supersedes_evidence_id.slice(0, 8).toUpperCase()}</span>}</div>
                     {evidenceVisitReferences.some(visit => (visit.linked_evidence_ids || []).includes(item.id)) && <div className="evidence-report-references"><strong>Referenced by EVC reports</strong>{evidenceVisitReferences.filter(visit => (visit.linked_evidence_ids || []).includes(item.id)).map(visit => <span key={visit.id}>Visit {visit.id.slice(0, 8).toUpperCase()} · {visit.report_status.replaceAll('_', ' ')} · {visit.report_submitted_at ? 'Submitted ' + formatDate(visit.report_submitted_at) : 'Not submitted'}</span>)}</div>}
                     <div className="evidence-attachments">
                       <div className="evidence-attachments-heading"><strong><FileText size={13}/> Attached files</strong><span>{(attachmentsByEvidence[item.id] || []).length} file(s)</span></div>
@@ -769,7 +867,7 @@ function App() {
               <div className="evc-form-heading"><div><h3>Schedule a verification visit</h3><p>Select an application in an active review stage and add the visit details.</p></div><span className="evidence-count">New visit</span></div>
               <div className="evc-form-grid">
                 <label>Application
-                  <select value={evcApplicationId} onChange={event => setEvcApplicationId(event.target.value)} required>
+                  <select value={evcApplicationId} onChange={event => void handleSelectEvcApplication(event.target.value)} required>
                     <option value="">Choose an application…</option>
                     {applications.filter(item => ['submitted', 'under_scrutiny', 'recommended_for_approval', 'pending_authority_decision', 'evc_pending', 'evc_scheduled'].includes(item.status)).map(item => <option key={item.id} value={item.id}>{item.application_number} · {item.title}</option>)}
                   </select>
@@ -779,7 +877,8 @@ function App() {
                 {evcMode === 'onsite' && <label>Visit location<input value={evcLocation} onChange={event => setEvcLocation(event.target.value)} placeholder="Campus address or meeting location" maxLength={240} required /></label>}
                 <label className="evc-notes-field">Coordinator notes<textarea value={evcNotes} onChange={event => setEvcNotes(event.target.value)} rows={2} maxLength={2000} placeholder="Optional agenda, preparation notes or joining details"/></label>
               </div>
-              <div className="evc-form-actions"><span>Saved visits are appended to the application audit timeline.</span><button className="primary-button" disabled={savingEvcVisit || !evcApplicationId || !evcScheduledFor || (evcMode === 'onsite' && !evcLocation.trim())}>{savingEvcVisit ? 'Scheduling…' : 'Confirm visit'}</button></div>
+              {evcApplicationId && <div className="evc-eligibility-note" role="status">{loadingEvcEligibility ? 'Checking scheduling eligibility…' : evcEligibility ? evcEligibility.eligible ? 'Eligible for scheduling. One active visit per application is allowed.' : evcEligibility.reasons.join(' ') : 'Eligibility could not be confirmed yet.'}</div>}
+              <div className="evc-form-actions"><span>Saved visits are appended to the application audit timeline.</span><button className="primary-button" disabled={savingEvcVisit || loadingEvcEligibility || !evcEligibility?.eligible || !evcApplicationId || !evcScheduledFor || (evcMode === 'onsite' && !evcLocation.trim())}>{savingEvcVisit ? 'Scheduling…' : 'Confirm visit'}</button></div>
             </form>}
             <div className="panel evc-schedule-panel">
               <div className="panel-heading"><div><h2>Visit register</h2><p>Visits in your current application access scope</p></div><div className="evc-register-actions"><span className="evidence-count">{evcVisits.length} visits</span><select value={evcStatusFilter} onChange={event => setEvcStatusFilter(event.target.value)} aria-label="Filter EVC visits by status"><option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="">All statuses</option></select></div></div>
