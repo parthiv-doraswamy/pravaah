@@ -7,10 +7,17 @@ Phase 4 turns the workflow data already stored by PRAVAAH into scoped operationa
 ## Chunks
 
 - [x] **Chunk 1 — Dashboard metrics and operational KPIs.** Added `GET /api/v1/operations/metrics`, returning role-scoped application status counts, active and awaiting-review totals, pending submission reviews, expired and near-expiry evidence, open escalations, failed notifications, and completed EVC visits with reports still pending. Added dashboard KPI cards backed by the API and tests for authentication, aggregate correctness, and institution scoping.
-- [ ] **Chunk 2 — Pendency and workload analytics.**
+- [x] **Chunk 2 — Pendency and workload analytics.** Added `GET /api/v1/operations/pendency` with scope-aware age buckets, workload by status (count, average age, oldest age), and the ten oldest pending cases. The dashboard now shows age distribution and institution-labelled oldest cases. Integration tests verify age bucketing and institution isolation.
 - [ ] **Chunk 3 — Unified task inbox.**
 - [ ] **Chunk 4 — Notification operations console.**
 - [ ] **Chunk 5 — Reports and exports.**
+
+## Pendency semantics and limitations
+
+- Pending workload includes configured review stages from submitted through authority decision; drafts and terminal states are excluded.
+- Waiting age uses `submitted_at` when present, otherwise the record's last-updated timestamp, then creation timestamp as a fallback. Age buckets are 0–2, 3–7, 8–14, and 15+ days.
+- Oldest-case detail is capped at ten records, while bucket and per-status aggregates cover all visible pending applications.
+- Aging is an operational indicator only; it does not encode official statutory service-level deadlines.
 
 ## Metric semantics and limitations
 
