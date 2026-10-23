@@ -50,3 +50,31 @@ class PendencyAnalytics(BaseModel):
     aging_buckets: dict[str, int]
     by_status: list[PendencyStatusSummary]
     oldest_items: list[PendencyItem]
+
+
+class TaskInboxItem(BaseModel):
+    """A role-relevant task derived from persisted workflow records."""
+
+    task_id: str
+    task_type: str
+    title: str
+    description: str
+    priority: str = Field(pattern="^(high|medium|low)$")
+    status: str
+    application_id: str
+    application_number: str
+    application_title: str
+    institution_name: str
+    created_at: date
+    due_date: date | None = None
+    action_view: str = Field(pattern="^(applications|detail|compliance|evc|notifications)$")
+
+
+class TaskInbox(BaseModel):
+    """Unified, role-scoped task list and counts."""
+
+    as_of: date
+    total: int = Field(ge=0)
+    by_priority: dict[str, int]
+    by_type: dict[str, int]
+    items: list[TaskInboxItem]
