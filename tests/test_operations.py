@@ -54,13 +54,16 @@ def test_operations_metrics_are_aggregated_and_institution_scoped(api_client_and
             expires_on=date.today() + timedelta(days=4),
             created_by_user_id=owner.id,
         )
-        other_evidence = ApplicationEvidence(
-            application_id=other_case.id,
-            title="Other institution certificate",
-            category="accreditation",
-            expires_on=date.today() - timedelta(days=1),
-        )
-        db.add_all([expired, due, other_evidence])
+        db.add_all([
+            expired,
+            due,
+            ApplicationEvidence(
+                application_id=other_case.id,
+                title="Other institution certificate",
+                category="accreditation",
+                expires_on=date.today() - timedelta(days=1),
+            ),
+        ])
         db.flush()
         db.add_all([
             ComplianceSubmission(
