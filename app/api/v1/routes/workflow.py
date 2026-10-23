@@ -1,6 +1,6 @@
 """Guarded workflow actions, case timeline, chain verification, and policy registry."""
 
-from datetime import UTC, datetime
+from datetime import UTC
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
