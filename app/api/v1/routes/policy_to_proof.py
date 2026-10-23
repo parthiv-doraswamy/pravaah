@@ -1,5 +1,6 @@
 """Read-only policy-to-proof dossier for one application."""
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -109,7 +110,7 @@ def policy_to_proof_dossier(
 
     chain_valid, first_invalid_sequence = verify_event_chain(events)
     return {
-        "as_of": __import__("datetime").datetime.now(__import__("datetime").UTC),
+        "as_of": datetime.now(UTC),
         "disclaimer": (
             "Traceability dossier for human review. Policy records may be synthetic "
             "demo assumptions and are not official AICTE rules or a statutory decision."
