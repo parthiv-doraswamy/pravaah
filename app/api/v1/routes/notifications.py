@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.routes.applications import scoped_applications_statement
 from app.auth.dependencies import get_current_user, require_roles
+from app.auth.permissions import NOTIFICATION_QUEUE_ROLES
 from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evidence import ApplicationEvidence
@@ -18,7 +19,6 @@ from app.schemas.notifications import NotificationQueueResult, NotificationRespo
 from app.services.workflow import append_event
 
 router = APIRouter()
-_QUEUE_ROLES = ("scrutiny_officer", "regional_officer", "bureau_officer", "policy_admin", "system_admin", "evc_coordinator")
 
 
 def _expiry_severity(expires_on: date, today: date) -> tuple[str, int] | None:
@@ -74,7 +74,7 @@ def mark_notification_read(
 )
 def queue_expiry_notifications(
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles(*_QUEUE_ROLES)),
+    user: User = Depends(require_roles(*NOTIFICATION_QUEUE_ROLES)),
 ) -> NotificationQueueResult:
     """Create in-app records for visible expiring evidence; does not send email/SMS."""
     now = datetime.now(UTC)
