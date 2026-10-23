@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type OperationsMetrics, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
 type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
@@ -79,6 +79,7 @@ function App() {
   const [transitionReason, setTransitionReason] = useState('')
   const [transitionBusy, setTransitionBusy] = useState(false)
   const [compliance, setCompliance] = useState<ComplianceOverview | null>(null)
+  const [operationsMetrics, setOperationsMetrics] = useState<OperationsMetrics | null>(null)
   const [loadingCompliance, setLoadingCompliance] = useState(false)
   const [escalations, setEscalations] = useState<ComplianceEscalation[]>([])
   const [loadingEscalations, setLoadingEscalations] = useState(false)
@@ -171,6 +172,7 @@ function App() {
     setDashboardLoading(true)
     Promise.all([
       api.complianceOverview().catch(() => null),
+      api.operationsMetrics().catch(() => null),
       api.evcVisits().catch(() => [] as EVCVisit[]),
       Promise.all(applications.slice(0, 8).map(async application => {
         try {
@@ -180,9 +182,10 @@ function App() {
           return []
         }
       })),
-    ]).then(([overview, visits, eventGroups]) => {
+    ]).then(([overview, operationalMetrics, visits, eventGroups]) => {
       if (cancelled) return
       if (overview) setCompliance(overview)
+      if (operationalMetrics) setOperationsMetrics(operationalMetrics)
       setEvcVisits(visits)
       setDashboardRecentEvents(eventGroups.flat().sort((a, b) => new Date(b.event.occurred_at).getTime() - new Date(a.event.occurred_at).getTime()).slice(0, 6))
     }).finally(() => {
@@ -750,6 +753,16 @@ function App() {
               <MetricCard icon={<Clock3 size={19}/>} label="Active cases" value={String(metrics.active)} note="Not completed or withdrawn" tone="amber" trendIcon={<ArrowUpRight size={14}/>} />
               <MetricCard icon={<ClipboardList size={19}/>} label="In review stages" value={String(metrics.awaiting)} note="Submitted or under scrutiny" tone="violet" trendIcon={<Activity size={14}/>} />
               <MetricCard icon={<FileCheck2 size={19}/>} label="Completed" value={String(metrics.completed)} note="Marked complete in the registry" tone="green" trendIcon={<Check size={14}/>} />
+            </section>
+
+            <div className="section-heading operations-metrics-heading"><div><h2>Operations at a glance</h2><p>Server-calculated totals across records visible to your role · As of {operationsMetrics ? formatDate(operationsMetrics.as_of) : 'loading'}</p></div></div>
+            <section className="metrics-grid operations-metrics-grid">
+              <MetricCard icon={<ClipboardList size={19}/>} label="Submissions awaiting review" value={operationsMetrics ? String(operationsMetrics.submissions_pending_review) : '—'} note="Submitted undertakings" tone="violet" trendIcon={<Activity size={14}/>} />
+              <MetricCard icon={<AlertTriangle size={19}/>} label="Expired evidence" value={operationsMetrics ? String(operationsMetrics.expired_evidence) : '—'} note="Validity date has passed" tone="amber" trendIcon={<ArrowUpRight size={14}/>} />
+              <MetricCard icon={<Clock3 size={19}/>} label="Evidence due in 7 days" value={operationsMetrics ? String(operationsMetrics.evidence_due_within_7_days) : '—'} note="Upcoming validity deadlines" tone="blue" trendIcon={<CalendarClock size={14}/>} />
+              <MetricCard icon={<ShieldCheck size={19}/>} label="Open escalations" value={operationsMetrics ? String(operationsMetrics.open_escalations) : '—'} note="Require operational follow-up" tone="amber" trendIcon={<AlertTriangle size={14}/>} />
+              <MetricCard icon={<Bell size={19}/>} label="Failed notifications" value={operationsMetrics ? String(operationsMetrics.failed_notifications) : '—'} note="Delivery recovery needed" tone="violet" trendIcon={<Activity size={14}/>} />
+              <MetricCard icon={<FileCheck2 size={19}/>} label="EVC reports pending" value={operationsMetrics ? String(operationsMetrics.evc_reports_pending) : '—'} note="Completed visits without submitted reports" tone="green" trendIcon={<ClipboardList size={14}/>} />
             </section>
 
             <section className="content-grid"><div className="panel recent-panel"><div className="panel-heading"><div><h2>Recent applications</h2><p>Latest activity in your visible register</p></div><button className="subtle-icon-button" onClick={() => setView('applications')} aria-label="View all applications"><ArrowRight size={17}/></button></div><ApplicationTable applications={applications.slice(0, 5)} loading={loadingCases} onOpen={application => { setSelectedApplication(application); setView('detail') }} compact /></div><div className="panel status-panel"><div className="panel-heading"><div><h2>Workflow health</h2><p>Based on visible application statuses</p></div><Activity size={18} className="panel-heading-icon"/></div><div className="status-total"><strong>{total}</strong><span>total visible records</span></div><div className="status-bars">{[
