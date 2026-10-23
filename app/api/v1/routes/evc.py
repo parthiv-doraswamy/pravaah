@@ -16,7 +16,7 @@ from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evc_visit import EVCVisit
 from app.models.evidence import ApplicationEvidence
-from app.schemas.evc import EVCReportUpdate, EVCVisitCreate, EVCVisitResponse, EVCVisitStatusUpdate
+from app.schemas.evc import EVCEligibilityResponse, EVCReportUpdate, EVCVisitCreate, EVCVisitResponse, EVCVisitStatusUpdate
 from app.services.workflow import append_event
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,46 @@ def list_visits(
         ) from exc
 
 
+def _eligibility_reasons(db: Session, application: Application) -> tuple[list[str], UUID | None]:
+    reasons: list[str] = []
+    if application.status not in _ALLOWED_APPLICATION_STATUSES:
+        reasons.append("Application is not in an active review stage.")
+    active_visit = db.scalar(
+        select(EVCVisit.id)
+        .where(EVCVisit.application_id == application.id, EVCVisit.status == "scheduled")
+        .order_by(EVCVisit.scheduled_for.asc())
+        .limit(1)
+    )
+    if active_visit is not None:
+        reasons.append("A scheduled EVC visit already exists for this application.")
+    return reasons, active_visit
+
+
+@router.get(
+    "/applications/{application_id}/eligibility",
+    response_model=EVCEligibilityResponse,
+    summary="Check whether an application can be scheduled for EVC",
+)
+def check_evc_eligibility(
+    application_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> EVCEligibilityResponse:
+    application = db.scalar(
+        scoped_applications_statement(user).where(Application.id == application_id)
+    )
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    reasons, active_visit_id = _eligibility_reasons(db, application)
+    return EVCEligibilityResponse(
+        application_id=application.id,
+        eligible=not reasons,
+        reasons=reasons,
+        active_visit_id=active_visit_id,
+        eligible_application_statuses=sorted(_ALLOWED_APPLICATION_STATUSES),
+    )
+
+
 @router.post(
     "/visits",
     response_model=EVCVisitResponse,
@@ -90,15 +130,15 @@ def schedule_visit(
     user: User = Depends(require_roles(*EVC_SCHEDULER_ROLES)),
 ) -> EVCVisit:
     application = db.scalar(
-        scoped_applications_statement(user).where(Application.id == payload.application_id)
+        scoped_applications_statement(user)
+        .where(Application.id == payload.application_id)
+        .with_for_update()
     )
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
-    if application.status not in _ALLOWED_APPLICATION_STATUSES:
-        raise HTTPException(
-            status_code=409,
-            detail="EVC visits can only be scheduled for applications in an active review stage",
-        )
+    reasons, _ = _eligibility_reasons(db, application)
+    if reasons:
+        raise HTTPException(status_code=409, detail="EVC scheduling is not eligible: " + " ".join(reasons))
     if payload.scheduled_for.astimezone(UTC) <= datetime.now(UTC):
         raise HTTPException(status_code=422, detail="scheduled_for must be in the future")
     if payload.mode == "onsite" and not (payload.location and payload.location.strip()):
