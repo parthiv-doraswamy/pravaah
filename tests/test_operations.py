@@ -315,12 +315,23 @@ def test_reports_export_csv_is_scoped_and_supports_date_filters(api_client_and_s
 
 
 def test_reports_export_requires_auth_and_rejects_unknown_report_type(api_client_and_sessions):
-    client, _ = api_client_and_sessions
+    client, db_factory = api_client_and_sessions
     assert client.get("/api/v1/operations/reports/applications/export").status_code == 401
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "institution@example.test", "password": "PravaahDemo2026!"},
-    )
-    # The isolated test database does not seed demo users; unauthenticated access remains denied.
-    assert login.status_code == 401
-    assert client.get("/api/v1/operations/reports/unknown/export").status_code == 401
+    with db_factory() as db:
+        institution = Institution(name="Report Access College", code="RPT-AUTH", region_code="RPT")
+        db.add(institution)
+        db.flush()
+        user = User(
+            email="report-auth@example.test",
+            full_name="Report Access",
+            role="institution_user",
+            password_hash=hash_password("Test-password-123!"),
+            institution_id=institution.id,
+        )
+        db.add(user)
+        db.commit()
+        email = user.email
+    login = client.post("/api/v1/auth/login", json={"email": email, "password": "Test-password-123!"})
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    assert client.get("/api/v1/operations/reports/unknown/export", headers=headers).status_code == 404
