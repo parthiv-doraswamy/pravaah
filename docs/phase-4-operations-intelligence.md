@@ -10,7 +10,7 @@ Phase 4 turns the workflow data already stored by PRAVAAH into scoped operationa
 - [x] **Chunk 2 — Pendency and workload analytics.** Added `GET /api/v1/operations/pendency` with scope-aware age buckets, workload by status (count, average age, oldest age), and the ten oldest pending cases. The dashboard now shows age distribution and institution-labelled oldest cases. Integration tests verify age bucketing and institution isolation.
 - [x] **Chunk 3 — Unified task inbox.** Added `GET /api/v1/operations/inbox` and a role-aware task inbox for application workflow actions, compliance submission reviews/corrections, expiring current evidence, open escalations, pending EVC reports, and failed notification deliveries for the signed-in user. The UI groups counts by priority, filters by priority, and links tasks to their relevant workspace. Tests cover authentication, institution isolation, and the browser inbox flow.
 - [x] **Chunk 4 — Notification operations console.** Added role-gated `GET /api/v1/notifications/operations` with status counts, retry-eligible/exhausted counts, and the latest 100 notification records within the user's server-authorized application scope. Added an operations-only retry endpoint that enforces scope and retry limits, preserves attempt history, and appends an audit event. The new UI has delivery health cards, status filtering, failure context, retry actions, and idempotent expiry-alert queueing. Integration and browser tests cover role restrictions and recovery.
-- [ ] **Chunk 5 — Reports and exports.**
+- [x] **Chunk 5 — Reports and exports.** Added authenticated CSV exports for application register, compliance submissions, evidence register, EVC visits/reports, and notification delivery records. Optional date filters are validated server-side; every export uses the same application visibility scope as the register. CSV cells are protected against spreadsheet-formula injection, downloads are marked no-store, and the workspace includes report descriptions, date controls, export actions, and limitations. Integration and browser tests cover access scoping, authentication, date validation, and a CSV download.
 
 ## Notification operations semantics and limitations
 
@@ -40,3 +40,12 @@ Phase 4 turns the workflow data already stored by PRAVAAH into scoped operationa
 - “Evidence due within 7 days” includes dates from today through seven days ahead. Expired records are counted separately.
 - “EVC reports pending” means the visit is marked completed while the report is not submitted.
 - These metrics describe the prototype's data; they do not establish statutory compliance or replace human review.
+
+
+## Reports and exports semantics and limitations
+
+- Export routes are `GET /api/v1/operations/reports/{report_type}/export`; supported report types are `applications`, `compliance`, `evidence`, `evc`, and `notifications`. Unknown report types return 404.
+- Optional `from_date` and `to_date` filters are ISO dates and reject a start date later than the end date. The relevant timestamp is application creation, submission creation, evidence creation, EVC scheduled date, or notification creation, depending on report type.
+- Each query derives visible application IDs from the same server-side application-scope helper used by the application register. The exports do not depend on client-side filtering or the current page of loaded applications.
+- CSV exports contain persisted record data and use UTF-8 with a byte-order mark for spreadsheet compatibility. Text cells beginning with spreadsheet formula markers are escaped. Responses include an attachment filename and `Cache-Control: no-store`.
+- The compliance export is the submission lifecycle report; evidence metadata is exported separately. Exports do not include binary evidence attachments or secrets. Notification rows show the recorded delivery state and error field, not independent provider confirmation. Data is a point-in-time operational extract and does not certify statutory compliance.
