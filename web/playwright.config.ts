@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 const apiEnvironment = {
   APP_ENV: 'development',
-  DATABASE_URL: 'sqlite:///./var/pravaah-e2e.sqlite3',
+  DATABASE_URL: process.env.PRAVAAH_E2E_DATABASE_URL ?? 'sqlite:///./var/pravaah-e2e.sqlite3',
   JWT_SECRET_KEY: 'ci-only-pravaah-e2e-signing-secret-2026',
   DEMO_USER_PASSWORD: 'PRAVAAH-E2E-Only-Password-2026!',
   CORS_ORIGINS: 'http://127.0.0.1:5173',
