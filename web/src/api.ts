@@ -26,6 +26,49 @@ export type ApplicationPage = {
   total: number
 }
 
+export type OperationsMetrics = {
+  as_of: string
+  total_applications: number
+  active_applications: number
+  awaiting_review: number
+  completed_applications: number
+  applications_by_status: Record<string, number>
+  submissions_pending_review: number
+  expired_evidence: number
+  evidence_due_within_7_days: number
+  open_escalations: number
+  failed_notifications: number
+  evc_reports_pending: number
+}
+
+export type PendencyItem = { application_id: string; application_number: string; title: string; status: string; institution_name: string; waiting_since: string; days_waiting: number }
+export type PendencyStatusSummary = { status: string; count: number; oldest_days: number; average_days: number }
+export type PendencyAnalytics = { as_of: string; total_pending: number; aging_buckets: Record<string, number>; by_status: PendencyStatusSummary[]; oldest_items: PendencyItem[] }
+
+export type TaskInboxItem = {
+  task_id: string
+  task_type: string
+  title: string
+  description: string
+  priority: 'high' | 'medium' | 'low'
+  status: string
+  application_id: string
+  application_number: string
+  application_title: string
+  institution_name: string
+  created_at: string
+  due_date: string | null
+  action_view: 'applications' | 'detail' | 'compliance' | 'evc' | 'notifications'
+}
+
+export type TaskInbox = {
+  as_of: string
+  total: number
+  by_priority: Record<string, number>
+  by_type: Record<string, number>
+  items: TaskInboxItem[]
+}
+
 export type TokenResponse = {
   access_token: string
   token_type: string
@@ -192,6 +235,25 @@ export type NotificationQueueResult = {
   detail: string
 }
 
+export type NotificationOperationsItem = NotificationRecord & {
+  application_number: string
+  application_title: string
+  recipient_name: string
+  recipient_role: string
+  updated_at: string
+}
+
+export type NotificationOperationsSummary = {
+  as_of: string
+  total: number
+  by_status: Record<string, number>
+  failed: number
+  retry_ready: number
+  exhausted: number
+  items: NotificationOperationsItem[]
+}
+
+
 export type EVCEligibility = {
   application_id: string
   eligible: boolean
@@ -270,6 +332,9 @@ export const api = {
   verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
   complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
+  operationsMetrics: () => request<OperationsMetrics>('/operations/metrics'),
+  pendencyAnalytics: () => request<PendencyAnalytics>('/operations/pendency'),
+  taskInbox: () => request<TaskInbox>('/operations/inbox'),
   submissions: (applicationId: string) => request<ComplianceSubmission[]>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`),
   createSubmission: (applicationId: string, payload: { submission_type: string; title: string; declaration: string; evidence_ids: string[] }) =>
     request<ComplianceSubmission>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`, { method: 'POST', body: JSON.stringify(payload) }),
@@ -283,6 +348,32 @@ export const api = {
   markNotificationRead: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
   retryNotification: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
+  notificationOperations: () => request<NotificationOperationsSummary>('/notifications/operations'),
+  retryOperationalNotification: (id: string) => request<NotificationRecord>(`/notifications/operations/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
+  downloadOperationsReport: async (type: 'applications' | 'compliance' | 'evidence' | 'evc' | 'notifications', fromDate?: string, toDate?: string) => {
+    const token = getToken()
+    const params = new URLSearchParams()
+    if (fromDate) params.set('from_date', fromDate)
+    if (toDate) params.set('to_date', toDate)
+    const query = params.toString()
+    const response = await fetch(`${API_BASE}/operations/reports/${type}/export${query ? `?${query}` : ''}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!response.ok) {
+      let message = `Report export failed (${response.status})`
+      try { const payload = await response.json(); if (typeof payload.detail === 'string') message = payload.detail } catch { /* retain status message */ }
+      throw new Error(message)
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `pravaah-${type}-report.csv`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  },
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
   renewEvidence: (applicationId: string, evidenceId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/renewals`, { method: 'POST', body: JSON.stringify(payload) }),

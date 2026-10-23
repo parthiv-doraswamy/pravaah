@@ -15,7 +15,7 @@ from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evidence import ApplicationEvidence
 from app.models.notification import NotificationRecord
-from app.schemas.notifications import NotificationQueueResult, NotificationResponse
+from app.schemas.notifications import NotificationOperationsItem, NotificationOperationsSummary, NotificationQueueResult, NotificationResponse
 from app.services.notification_jobs import expiry_severity
 from app.services.workflow import append_event
 
@@ -103,6 +103,112 @@ def retry_notification_delivery(
             "previous_max_attempts": previous_attempt_limit,
             "max_attempts": notification.max_attempts,
             "source": "recipient_recovery",
+        },
+    )
+    db.commit()
+    db.refresh(notification)
+    return notification
+
+
+
+
+@router.get(
+    "/operations",
+    response_model=NotificationOperationsSummary,
+    summary="Get scoped notification delivery operations",
+)
+def notification_operations(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*NOTIFICATION_QUEUE_ROLES)),
+) -> NotificationOperationsSummary:
+    """Return delivery health and recent records across applications visible to an operations role."""
+    visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).order_by(None).subquery()
+    visible_app_ids = select(visible_ids.c.id)
+    rows = db.execute(
+        select(NotificationRecord, Application, User)
+        .join(Application, Application.id == NotificationRecord.application_id)
+        .join(User, User.id == NotificationRecord.recipient_user_id)
+        .where(Application.id.in_(visible_app_ids))
+        .order_by(NotificationRecord.created_at.desc())
+    ).all()
+    by_status: dict[str, int] = {}
+    for record, _, _ in rows:
+        by_status[record.delivery_status] = by_status.get(record.delivery_status, 0) + 1
+    items = [
+        NotificationOperationsItem(
+            id=record.id,
+            application_id=application.id,
+            evidence_id=record.evidence_id,
+            application_number=application.application_number,
+            application_title=application.title,
+            recipient_name=recipient.full_name,
+            recipient_role=recipient.role,
+            notification_type=record.notification_type,
+            title=record.title,
+            message=record.message,
+            severity=record.severity,
+            delivery_status=record.delivery_status,
+            attempt_count=record.attempt_count,
+            max_attempts=record.max_attempts,
+            next_attempt_at=record.next_attempt_at,
+            last_error=record.last_error,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            read_at=record.read_at,
+            sent_at=record.sent_at,
+        )
+        for record, application, recipient in rows[:100]
+    ]
+    failed = by_status.get("failed", 0)
+    retry_ready = sum(1 for record, _, _ in rows if record.delivery_status == "failed" and record.attempt_count < 10)
+    return NotificationOperationsSummary(
+        as_of=utc_now(), total=len(rows), by_status=by_status,
+        failed=failed, retry_ready=retry_ready, exhausted=failed - retry_ready, items=items,
+    )
+
+
+@router.post(
+    "/operations/{notification_id}/retry",
+    response_model=NotificationResponse,
+    summary="Retry a failed delivery within the caller's operational scope",
+)
+def retry_notification_for_operations(
+    notification_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*NOTIFICATION_QUEUE_ROLES)),
+) -> NotificationRecord:
+    """Retry a failed record only when its application is visible to this operations user."""
+    visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).order_by(None).subquery()
+    notification = db.scalar(
+        select(NotificationRecord)
+        .where(NotificationRecord.id == notification_id, NotificationRecord.application_id.in_(select(visible_ids.c.id)))
+        .with_for_update()
+    )
+    if notification is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    if notification.delivery_status != "failed":
+        raise HTTPException(status_code=409, detail="Only failed notifications can be retried")
+    if notification.attempt_count >= 10:
+        raise HTTPException(status_code=409, detail="Notification reached the manual retry safety limit")
+    now = utc_now()
+    previous_attempt_limit = notification.max_attempts
+    if notification.attempt_count >= notification.max_attempts:
+        notification.max_attempts = min(notification.max_attempts + 1, 10)
+    notification.delivery_status = "pending"
+    notification.next_attempt_at = now
+    notification.last_error = None
+    notification.updated_at = now
+    application = db.get(Application, notification.application_id)
+    append_event(
+        db, application_id=notification.application_id,
+        event_type="notification_delivery_retry_requested",
+        from_status=application.status if application else None,
+        to_status=application.status if application else None,
+        actor_user_id=user.id,
+        metadata={
+            "notification_id": str(notification.id), "attempt_count": notification.attempt_count,
+            "previous_max_attempts": previous_attempt_limit, "max_attempts": notification.max_attempts,
+            "source": "operations_console",
         },
     )
     db.commit()

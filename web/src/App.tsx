@@ -3,11 +3,11 @@ import {
   Activity, ArrowRight, ArrowUpRight, Bell, BookOpenCheck, BriefcaseBusiness,
   CalendarClock, Check, ChevronDown, CircleHelp, ClipboardList, Clock3, FileCheck2, FileText, AlertTriangle,
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
-  Sparkles, Users, X,
+  Sparkles, Users, X, Inbox, MailWarning,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type OperationsMetrics, type PendencyAnalytics, type TaskInbox, type TaskInboxItem, type NotificationOperationsSummary, type NotificationOperationsItem, type User } from './api'
 
-type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
+type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc' | 'inbox' | 'notifications' | 'reports'
 type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
 const EVC_CHECKLIST = [
   { key: 'governance', label: 'Governance and approvals' },
@@ -79,13 +79,25 @@ function App() {
   const [transitionReason, setTransitionReason] = useState('')
   const [transitionBusy, setTransitionBusy] = useState(false)
   const [compliance, setCompliance] = useState<ComplianceOverview | null>(null)
+  const [operationsMetrics, setOperationsMetrics] = useState<OperationsMetrics | null>(null)
+  const [pendencyAnalytics, setPendencyAnalytics] = useState<PendencyAnalytics | null>(null)
+  const [taskInbox, setTaskInbox] = useState<TaskInbox | null>(null)
+  const [loadingTaskInbox, setLoadingTaskInbox] = useState(false)
+  const [inboxPriorityFilter, setInboxPriorityFilter] = useState('all')
   const [loadingCompliance, setLoadingCompliance] = useState(false)
   const [escalations, setEscalations] = useState<ComplianceEscalation[]>([])
   const [loadingEscalations, setLoadingEscalations] = useState(false)
   const [notifications, setNotifications] = useState<NotificationRecord[]>([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [notificationOperations, setNotificationOperations] = useState<NotificationOperationsSummary | null>(null)
+  const [loadingNotificationOperations, setLoadingNotificationOperations] = useState(false)
+  const [notificationStatusFilter, setNotificationStatusFilter] = useState('all')
+  const [retryingOperationalNotificationId, setRetryingOperationalNotificationId] = useState<string | null>(null)
   const [queueingNotifications, setQueueingNotifications] = useState(false)
+  const [reportFromDate, setReportFromDate] = useState('')
+  const [reportToDate, setReportToDate] = useState('')
+  const [reportDownloading, setReportDownloading] = useState<string | null>(null)
   const [policies, setPolicies] = useState<PolicyVersion[]>([])
   const [loadingPolicies, setLoadingPolicies] = useState(false)
   const [evcVisits, setEvcVisits] = useState<EVCVisit[]>([])
@@ -171,6 +183,8 @@ function App() {
     setDashboardLoading(true)
     Promise.all([
       api.complianceOverview().catch(() => null),
+      api.operationsMetrics().catch(() => null),
+      api.pendencyAnalytics().catch(() => null),
       api.evcVisits().catch(() => [] as EVCVisit[]),
       Promise.all(applications.slice(0, 8).map(async application => {
         try {
@@ -180,9 +194,11 @@ function App() {
           return []
         }
       })),
-    ]).then(([overview, visits, eventGroups]) => {
+    ]).then(([overview, operationalMetrics, pendency, visits, eventGroups]) => {
       if (cancelled) return
       if (overview) setCompliance(overview)
+      if (operationalMetrics) setOperationsMetrics(operationalMetrics)
+      if (pendency) setPendencyAnalytics(pendency)
       setEvcVisits(visits)
       setDashboardRecentEvents(eventGroups.flat().sort((a, b) => new Date(b.event.occurred_at).getTime() - new Date(a.event.occurred_at).getTime()).slice(0, 6))
     }).finally(() => {
@@ -212,6 +228,40 @@ function App() {
       .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false); setLoadingSubmissions(false) } })
     return () => { cancelled = true }
   }, [user, view, selectedApplication])
+
+  const loadNotificationOperations = useCallback(async () => {
+    if (!user) return
+    setLoadingNotificationOperations(true)
+    try { setNotificationOperations(await api.notificationOperations()) }
+    catch (error) { setNotice(error instanceof Error ? error.message : 'Could not load notification operations.') }
+    finally { setLoadingNotificationOperations(false) }
+  }, [user])
+
+  useEffect(() => { if (user && view === 'notifications') void loadNotificationOperations() }, [user, view, loadNotificationOperations])
+
+  async function handleRetryOperationalNotification(item: NotificationOperationsItem) {
+    setRetryingOperationalNotificationId(item.id)
+    setNotice('')
+    try {
+      await api.retryOperationalNotification(item.id)
+      await loadNotificationOperations()
+      await loadNotifications()
+      setNotice('Delivery retry queued. Attempt history was preserved and the request was added to the audit trail.')
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not retry notification delivery.') }
+    finally { setRetryingOperationalNotificationId(null) }
+  }
+
+  async function handleQueueOperationalNotifications() {
+    setQueueingNotifications(true)
+    setNotice('')
+    try {
+      const result = await api.queueExpiryNotifications()
+      await loadNotificationOperations()
+      await loadNotifications()
+      setNotice(`Queued ${result.created} notification(s); ${result.skipped_existing} duplicate(s) skipped.`)
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not queue expiry notifications.') }
+    finally { setQueueingNotifications(false) }
+  }
 
   const loadNotifications = useCallback(async () => {
     if (!user) return
@@ -279,6 +329,16 @@ function App() {
     }
   }
 
+  const loadTaskInbox = useCallback(async () => {
+    if (!user) return
+    setLoadingTaskInbox(true)
+    try { setTaskInbox(await api.taskInbox()) }
+    catch (error) { setNotice(error instanceof Error ? error.message : 'Could not load your task inbox.') }
+    finally { setLoadingTaskInbox(false) }
+  }, [user])
+
+  useEffect(() => { if (user && view === 'inbox') void loadTaskInbox() }, [user, view, loadTaskInbox])
+
   const loadCompliance = useCallback(async () => {
     if (!user) return
     setLoadingCompliance(true)
@@ -289,6 +349,19 @@ function App() {
   }, [user])
 
   useEffect(() => { if (user && view === 'compliance') void loadCompliance() }, [user, view, loadCompliance])
+
+  async function openInboxTask(item: TaskInboxItem) {
+    setNotice('')
+    if (item.action_view === 'detail') {
+      try { setSelectedApplication(await api.application(item.application_id)); setView('detail') }
+      catch (error) { setNotice(error instanceof Error ? error.message : 'Could not open the task application.') }
+      return
+    }
+    if (item.action_view === 'compliance') { setView('compliance'); return }
+    if (item.action_view === 'evc') { setView('evc'); return }
+    if (item.action_view === 'notifications') { setView('overview'); setNotificationsOpen(true); void loadNotifications(); return }
+    setView('applications')
+  }
 
   async function openAlertApplication(applicationId: string) {
     try { setSelectedApplication(await api.application(applicationId)); setView('detail') }
@@ -683,9 +756,28 @@ function App() {
     </main>
   )
 
+  const downloadReport = async (type: 'applications' | 'compliance' | 'evidence' | 'evc' | 'notifications') => {
+    if (reportFromDate && reportToDate && reportFromDate > reportToDate) {
+      setNotice('The report start date must be on or before its end date.')
+      return
+    }
+    setReportDownloading(type)
+    try {
+      await api.downloadOperationsReport(type, reportFromDate || undefined, reportToDate || undefined)
+      setNotice(`${type[0].toUpperCase() + type.slice(1)} CSV export downloaded successfully.`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not export this report.')
+    } finally {
+      setReportDownloading(null)
+    }
+  }
+
   const navItems = [
     { id: 'overview' as const, label: 'Overview', icon: LayoutDashboard },
     { id: 'applications' as const, label: 'Applications', icon: ClipboardList, count: total },
+    { id: 'inbox' as const, label: 'Task inbox', icon: Inbox, count: taskInbox?.total },
+    { id: 'reports' as const, label: 'Reports & exports', icon: FileText },
+    ...(['scrutiny_officer', 'regional_officer', 'bureau_officer', 'policy_admin', 'system_admin', 'evc_coordinator'].includes(user.role) ? [{ id: 'notifications' as const, label: 'Notification ops', icon: MailWarning }] : []),
     { id: 'evc' as const, label: 'EVC scheduling', icon: CalendarClock },
     { id: 'compliance' as const, label: 'Deadlines & compliance', icon: ShieldCheck },
 
@@ -724,7 +816,7 @@ function App() {
         <button type="button" className="workspace-select" onClick={() => { setView('overview'); setMobileNav(false); setNotice('Workspace overview opened. Use the profile control at the top right to sign out.') }} title="Open workspace overview" aria-label="Open workspace overview"><div className="workspace-avatar">{initials(user.full_name)}</div><div className="workspace-meta"><strong>{user.role === 'institution_user' ? 'Institution workspace' : 'Review workspace'}</strong><span>{roleLabel}</span></div><ChevronDown size={15} /></button>
         <div className="nav-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Main navigation">
-          {navItems.map(item => <button key={item.id} className={`nav-item ${view === item.id ? 'active' : ''}`} onClick={() => { setView(item.id); setMobileNav(false) }}><item.icon size={18} /><span>{item.label}</span>{item.id === 'applications' && <span className="nav-count">{total}</span>}</button>)}
+          {navItems.map(item => <button key={item.id} className={`nav-item ${view === item.id ? 'active' : ''}`} onClick={() => { setView(item.id); setMobileNav(false) }}><item.icon size={18} /><span>{item.label}</span>{item.id === 'applications' && <span className="nav-count">{total}</span>}{item.id === 'inbox' && taskInbox && <span className="nav-count">{taskInbox.total}</span>}</button>)}
         </nav>
         <div className="nav-label nav-label-spaced">OPERATIONS</div>
         
@@ -734,10 +826,10 @@ function App() {
       </aside>
 
       <main className="main-panel">
-        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" title="Open notifications" onClick={() => { const next = !notificationsOpen; setNotificationsOpen(next); if (next) void loadNotifications() }}><Bell size={18} />{notifications.some(item => !item.read_at) && <i />}</button>{notificationsOpen && <div className="notification-popover"><div className="notification-popover-head"><div><strong>Notifications</strong><span>{notifications.filter(item => !item.read_at).length} unread</span></div><button className="text-button" onClick={() => void loadNotifications()} disabled={loadingNotifications}>Refresh</button></div>{loadingNotifications && notifications.length === 0 ? <div className="notification-empty">Loading notifications…</div> : notifications.length === 0 ? <div className="notification-empty">No notifications yet. Expiry alerts can be queued from Deadlines & compliance.</div> : <div className="notification-list">{notifications.slice(0, 12).map(item => <div className="notification-entry" key={item.id}><button className={'notification-row ' + (!item.read_at ? 'unread' : '')} onClick={() => void handleMarkNotificationRead(item)}><span className={'notification-severity ' + item.severity}><Bell size={14}/></span><span className="notification-row-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{formatDate(item.created_at)} · {item.delivery_status} · {item.attempt_count}/{item.max_attempts} attempts</small>{item.last_error && <small className="notification-delivery-error">{item.last_error}</small>}{item.next_attempt_at && item.delivery_status === 'pending' && <small>Next attempt: {formatDate(item.next_attempt_at)}</small>}</span>{!item.read_at && <i />}</button>{item.delivery_status === 'failed' && <div className="notification-recovery"><span>Delivery failed after {item.attempt_count} attempt(s).</span><button className="text-button" onClick={() => void handleRetryNotification(item)}>Retry delivery</button></div>}</div>)}</div>}</div>}</div><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
+        <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumb">Workspace <span>/</span> <strong>{view === 'overview' ? 'Overview' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : view === 'inbox' ? 'Task inbox' : view === 'notifications' ? 'Notification operations' : view === 'reports' ? 'Reports & exports' : 'Policy registry'}</strong></div></div><div className="topbar-right"><div className="environment-pill"><span /> Demo environment</div><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" title="Open notifications" onClick={() => { const next = !notificationsOpen; setNotificationsOpen(next); if (next) void loadNotifications() }}><Bell size={18} />{notifications.some(item => !item.read_at) && <i />}</button>{notificationsOpen && <div className="notification-popover"><div className="notification-popover-head"><div><strong>Notifications</strong><span>{notifications.filter(item => !item.read_at).length} unread</span></div><button className="text-button" onClick={() => void loadNotifications()} disabled={loadingNotifications}>Refresh</button></div>{loadingNotifications && notifications.length === 0 ? <div className="notification-empty">Loading notifications…</div> : notifications.length === 0 ? <div className="notification-empty">No notifications yet. Expiry alerts can be queued from Deadlines & compliance.</div> : <div className="notification-list">{notifications.slice(0, 12).map(item => <div className="notification-entry" key={item.id}><button className={'notification-row ' + (!item.read_at ? 'unread' : '')} onClick={() => void handleMarkNotificationRead(item)}><span className={'notification-severity ' + item.severity}><Bell size={14}/></span><span className="notification-row-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{formatDate(item.created_at)} · {item.delivery_status} · {item.attempt_count}/{item.max_attempts} attempts</small>{item.last_error && <small className="notification-delivery-error">{item.last_error}</small>}{item.next_attempt_at && item.delivery_status === 'pending' && <small>Next attempt: {formatDate(item.next_attempt_at)}</small>}</span>{!item.read_at && <i />}</button>{item.delivery_status === 'failed' && <div className="notification-recovery"><span>Delivery failed after {item.attempt_count} attempt(s).</span><button className="text-button" onClick={() => void handleRetryNotification(item)}>Retry delivery</button></div>}</div>)}</div>}</div>}</div><div className="topbar-divider" /><button className="profile-button" onClick={signOut} title="Sign out"><div className="profile-avatar">{initials(user.full_name)}</div><div className="profile-copy"><strong>{user.full_name}</strong><span>{roleLabel}</span></div><LogOut size={16} className="logout-icon" /></button></div></header>
 
         <div className="content-area">
-          <div className="page-heading"><div><div className="eyebrow">YOUR WORKSPACE <span className="heading-dot">·</span> {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div><h1>{view === 'overview' ? 'Good to see you, ' + user.full_name.split(' ')[0] + '.' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : 'Policy registry'}</h1><p>{view === 'overview' ? 'Here’s the latest view of your approval workflow.' : view === 'applications' ? 'Search, review and manage your application records.' : view === 'detail' ? 'Review the current record and its latest status.' : view === 'compliance' ? 'Monitor recorded evidence expiry dates across your visible applications.' : view === 'evc' ? 'Plan verification visits and keep outcomes traceable.' : 'Review versioned policy records and their configured rules.'}</p></div><div className="heading-actions"><button className="secondary-button" onClick={() => void (view === 'policies' ? loadPolicies() : view === 'compliance' ? loadCompliance() : view === 'evc' ? loadEvcVisits() : loadApplications())} disabled={view === 'policies' ? loadingPolicies : view === 'compliance' ? loadingCompliance : view === 'evc' ? loadingEvcVisits : loadingCases}><Activity size={16} className={(view === 'policies' ? loadingPolicies : view === 'compliance' ? loadingCompliance : view === 'evc' ? loadingEvcVisits : loadingCases) ? 'spin' : ''} /> Refresh</button>{view !== 'policies' && user.role === 'institution_user' && <button className="primary-button" onClick={() => setCreateOpen(true)}><Plus size={17} /> New application</button>}</div></div>
+          <div className="page-heading"><div><div className="eyebrow">YOUR WORKSPACE <span className="heading-dot">·</span> {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div><h1>{view === 'overview' ? 'Good to see you, ' + user.full_name.split(' ')[0] + '.' : view === 'applications' ? 'Applications' : view === 'detail' ? 'Application details' : view === 'compliance' ? 'Deadlines & compliance' : view === 'evc' ? 'EVC scheduling' : view === 'inbox' ? 'Task inbox' : view === 'notifications' ? 'Notification operations' : view === 'reports' ? 'Reports & exports' : 'Policy registry'}</h1><p>{view === 'overview' ? 'Here’s the latest view of your approval workflow.' : view === 'applications' ? 'Search, review and manage your application records.' : view === 'detail' ? 'Review the current record and its latest status.' : view === 'compliance' ? 'Monitor recorded evidence expiry dates across your visible applications.' : view === 'evc' ? 'Plan verification visits and keep outcomes traceable.' : view === 'inbox' ? 'Prioritized actions from the workflow records visible to your role.' : view === 'notifications' ? 'Monitor delivery health, investigate failures, and safely retry eligible notifications.' : view === 'reports' ? 'Export access-scoped operational records to CSV for analysis and review.' : 'Review versioned policy records and their configured rules.'}</p></div><div className="heading-actions"><button className="secondary-button" onClick={() => void (view === 'policies' ? loadPolicies() : view === 'compliance' ? loadCompliance() : view === 'evc' ? loadEvcVisits() : view === 'inbox' ? loadTaskInbox() : view === 'notifications' ? loadNotificationOperations() : loadApplications())} disabled={view === 'policies' ? loadingPolicies : view === 'compliance' ? loadingCompliance : view === 'evc' ? loadingEvcVisits : view === 'inbox' ? loadingTaskInbox : view === 'notifications' ? loadingNotificationOperations : loadingCases}><Activity size={16} className={(view === 'policies' ? loadingPolicies : view === 'compliance' ? loadingCompliance : view === 'evc' ? loadingEvcVisits : loadingCases) ? 'spin' : ''} /> Refresh</button>{view !== 'policies' && user.role === 'institution_user' && <button className="primary-button" onClick={() => setCreateOpen(true)}><Plus size={17} /> New application</button>}</div></div>
 
           {notice && <div className={`notice ${notice.toLowerCase().includes('success') ? 'notice-success' : ''}`} role="status" aria-live="polite" aria-atomic="true"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Dismiss message"><X size={16} /></button></div>}
 
@@ -750,6 +842,40 @@ function App() {
               <MetricCard icon={<Clock3 size={19}/>} label="Active cases" value={String(metrics.active)} note="Not completed or withdrawn" tone="amber" trendIcon={<ArrowUpRight size={14}/>} />
               <MetricCard icon={<ClipboardList size={19}/>} label="In review stages" value={String(metrics.awaiting)} note="Submitted or under scrutiny" tone="violet" trendIcon={<Activity size={14}/>} />
               <MetricCard icon={<FileCheck2 size={19}/>} label="Completed" value={String(metrics.completed)} note="Marked complete in the registry" tone="green" trendIcon={<Check size={14}/>} />
+            </section>
+
+            <div className="section-heading operations-metrics-heading"><div><h2>Operations at a glance</h2><p>Server-calculated totals across records visible to your role · As of {operationsMetrics ? formatDate(operationsMetrics.as_of) : 'loading'}</p></div></div>
+            <section className="metrics-grid operations-metrics-grid">
+              <MetricCard icon={<ClipboardList size={19}/>} label="Submissions awaiting review" value={operationsMetrics ? String(operationsMetrics.submissions_pending_review) : '—'} note="Submitted undertakings" tone="violet" trendIcon={<Activity size={14}/>} />
+              <MetricCard icon={<AlertTriangle size={19}/>} label="Expired evidence" value={operationsMetrics ? String(operationsMetrics.expired_evidence) : '—'} note="Validity date has passed" tone="amber" trendIcon={<ArrowUpRight size={14}/>} />
+              <MetricCard icon={<Clock3 size={19}/>} label="Evidence due in 7 days" value={operationsMetrics ? String(operationsMetrics.evidence_due_within_7_days) : '—'} note="Upcoming validity deadlines" tone="blue" trendIcon={<CalendarClock size={14}/>} />
+              <MetricCard icon={<ShieldCheck size={19}/>} label="Open escalations" value={operationsMetrics ? String(operationsMetrics.open_escalations) : '—'} note="Require operational follow-up" tone="amber" trendIcon={<AlertTriangle size={14}/>} />
+              <MetricCard icon={<Bell size={19}/>} label="Failed notifications" value={operationsMetrics ? String(operationsMetrics.failed_notifications) : '—'} note="Delivery recovery needed" tone="violet" trendIcon={<Activity size={14}/>} />
+              <MetricCard icon={<FileCheck2 size={19}/>} label="EVC reports pending" value={operationsMetrics ? String(operationsMetrics.evc_reports_pending) : '—'} note="Completed visits without submitted reports" tone="green" trendIcon={<ClipboardList size={14}/>} />
+            </section>
+
+            <section className="pendency-analytics-grid">
+              <div className="panel pendency-panel">
+                <div className="panel-heading"><div><h2>Pendency aging</h2><p>{pendencyAnalytics ? `${pendencyAnalytics.total_pending} cases waiting · As of ${formatDate(pendencyAnalytics.as_of)}` : 'Loading scoped workload data…'}</p></div><Clock3 size={18} className="panel-heading-icon"/></div>
+                <div className="pendency-buckets">
+                  {[
+                    { key: '0-2_days', label: '0–2 days', tone: 'bar-green' },
+                    { key: '3-7_days', label: '3–7 days', tone: 'bar-blue' },
+                    { key: '8-14_days', label: '8–14 days', tone: 'bar-violet' },
+                    { key: '15+_days', label: '15+ days', tone: 'bar-amber' },
+                  ].map(bucket => <div className="pendency-bucket" key={bucket.key}><span>{bucket.label}</span><strong>{pendencyAnalytics?.aging_buckets[bucket.key] ?? '—'}</strong><div className="bar-track"><div className={`bar-fill ${bucket.tone}`} style={{ width: `${pendencyAnalytics?.total_pending ? ((pendencyAnalytics.aging_buckets[bucket.key] || 0) / pendencyAnalytics.total_pending) * 100 : 0}%` }}/></div></div>)}
+                </div>
+                <div className="panel-heading pendency-subheading"><div><h3>Workload by status</h3><p>Average and oldest waiting time</p></div></div>
+                {pendencyAnalytics?.by_status.length
+                  ? <div className="pendency-status-list">{pendencyAnalytics.by_status.map(item => <div className="pendency-status-row" key={item.status}><span>{formatStatus(item.status)}</span><strong>{item.count}</strong><small>Avg {item.average_days}d · Oldest {item.oldest_days}d</small></div>)}</div>
+                  : <div className="dashboard-empty"><Check size={18}/><span>{pendencyAnalytics ? 'No applications are currently waiting in review stages.' : 'Pendency analytics unavailable.'}</span></div>}
+              </div>
+              <div className="panel pendency-panel oldest-panel">
+                <div className="panel-heading"><div><h2>Oldest pending cases</h2><p>Up to 10 cases, longest waiting first</p></div><button className="text-button" onClick={() => setView('applications')}>Open register <ArrowRight size={14}/></button></div>
+                {pendencyAnalytics?.oldest_items.length
+                  ? <div className="oldest-pendency-list">{pendencyAnalytics.oldest_items.map(item => <div className="oldest-pendency-row" key={item.application_id}><div className="case-icon"><FileText size={15}/></div><div className="oldest-pendency-copy"><strong>{item.title}</strong><span>{item.application_number} · {item.institution_name}</span><small>{formatStatus(item.status)} · Waiting since {formatDate(item.waiting_since)}</small></div><span className={`pendency-age ${item.days_waiting >= 15 ? 'pendency-age-high' : item.days_waiting >= 8 ? 'pendency-age-warn' : ''}`}>{item.days_waiting}d</span></div>)}</div>
+                  : <div className="dashboard-empty"><Check size={18}/><span>{pendencyAnalytics ? 'No pending cases to display.' : 'Pendency analytics unavailable.'}</span></div>}
+              </div>
             </section>
 
             <section className="content-grid"><div className="panel recent-panel"><div className="panel-heading"><div><h2>Recent applications</h2><p>Latest activity in your visible register</p></div><button className="subtle-icon-button" onClick={() => setView('applications')} aria-label="View all applications"><ArrowRight size={17}/></button></div><ApplicationTable applications={applications.slice(0, 5)} loading={loadingCases} onOpen={application => { setSelectedApplication(application); setView('detail') }} compact /></div><div className="panel status-panel"><div className="panel-heading"><div><h2>Workflow health</h2><p>Based on visible application statuses</p></div><Activity size={18} className="panel-heading-icon"/></div><div className="status-total"><strong>{total}</strong><span>total visible records</span></div><div className="status-bars">{[
@@ -783,6 +909,58 @@ function App() {
                  <div className="panel-heading"><div><h2>Recent workflow activity</h2><p>Latest events from your most recent visible applications</p></div><button className="text-button" onClick={() => setView('applications')}>Open register <ArrowRight size={14}/></button></div>
                  {dashboardLoading && dashboardRecentEvents.length === 0 ? <div className="table-state"><span>Loading recent activity…</span></div> : dashboardRecentEvents.length === 0 ? <div className="dashboard-empty"><Activity size={18}/><span>No workflow events are available yet.</span></div> : <div className="dashboard-timeline-list">{dashboardRecentEvents.map(({application,event}) => <button className="dashboard-timeline-row" key={event.id} onClick={() => { setSelectedApplication(application); setView('detail') }}><span className="dashboard-timeline-dot"/><span className="dashboard-compact-copy"><strong>{event.event_type.replaceAll('_',' ')}</strong><small>{application.application_number} · {application.title}</small></span><time>{new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short' }).format(new Date(event.occurred_at))}</time></button>)}</div>}
                </div>
+          </section>}
+
+          {view === 'inbox' && <section className="task-inbox-page">
+            <div className="task-inbox-summary-grid">
+              <article className="task-inbox-summary"><span>Open tasks</span><strong>{taskInbox?.total ?? '—'}</strong><small>Visible to your role</small></article>
+              <article className="task-inbox-summary task-inbox-high"><span>High priority</span><strong>{taskInbox?.by_priority.high ?? '—'}</strong><small>Review first</small></article>
+              <article className="task-inbox-summary task-inbox-medium"><span>Medium priority</span><strong>{taskInbox?.by_priority.medium ?? '—'}</strong><small>Follow up soon</small></article>
+              <article className="task-inbox-summary task-inbox-low"><span>Low priority</span><strong>{taskInbox?.by_priority.low ?? '—'}</strong><small>Routine follow-up</small></article>
+            </div>
+            <section className="panel task-inbox-panel">
+              <div className="panel-heading"><div><h2>Prioritized task list</h2><p>{taskInbox ? 'As of ' + formatDate(taskInbox.as_of) + ' · ' + taskInbox.items.length + ' items shown' : 'Tasks are loaded from server-side workflow records.'}</p></div><label className="task-filter-label" htmlFor="inbox-priority">Priority <select id="inbox-priority" value={inboxPriorityFilter} onChange={event => setInboxPriorityFilter(event.target.value)}><option value="all">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label></div>
+              {loadingTaskInbox && !taskInbox ? <div className="table-state"><div className="loading-line"/><div className="loading-line"/><span>Loading task inbox…</span></div>
+                : !taskInbox ? <div className="empty-state"><strong>Task inbox unavailable</strong><p>Refresh after checking the API connection.</p><button className="secondary-button" onClick={() => void loadTaskInbox()}>Try again</button></div>
+                : taskInbox.items.filter(item => inboxPriorityFilter === 'all' || item.priority === inboxPriorityFilter).length === 0 ? <div className="empty-state"><div className="empty-icon"><Check size={22}/></div><strong>{inboxPriorityFilter === 'all' ? 'No open tasks' : 'No ' + inboxPriorityFilter + '-priority tasks'}</strong><p>New actions will appear here when workflow records need attention.</p></div>
+                : <div className="task-inbox-list">{taskInbox.items.filter(item => inboxPriorityFilter === 'all' || item.priority === inboxPriorityFilter).map(item => <button className="task-inbox-row" key={item.task_id} onClick={() => void openInboxTask(item)}><span className={'task-priority-dot ' + item.priority} aria-label={item.priority + ' priority'}/><span className="task-inbox-copy"><strong>{item.title}</strong><span>{item.application_number} · {item.application_title}</span><small>{item.institution_name} · {item.description}</small><small>{formatStatus(item.status)} · Updated {formatDate(item.created_at)}{item.due_date ? ' · Due ' + formatDate(item.due_date) : ''}</small></span><span className={'task-priority-label ' + item.priority}>{item.priority}</span><ArrowRight size={16}/></button>)}</div>}
+            </section>
+            <p className="task-inbox-footnote">Tasks are derived from persisted records in your server-authorized scope. Opening a task takes you to its relevant workspace; every mutation is re-authorized by the API.</p>
+          </section>}
+
+          {view === 'reports' && <section className="reports-page">
+            <div className="panel reports-intro"><div className="panel-heading"><div><h2>Operational reports</h2><p>CSV files are generated from persisted records each time you export and are restricted to applications visible to your account.</p></div></div>
+              <div className="report-date-filters"><label>Created / scheduled from<input type="date" value={reportFromDate} onChange={event => setReportFromDate(event.target.value)} /></label><label>Through date<input type="date" value={reportToDate} onChange={event => setReportToDate(event.target.value)} /></label><button className="text-button" onClick={() => { setReportFromDate(''); setReportToDate('') }}>Clear dates</button></div>
+              <p className="report-filter-note">Date filters apply to each report's relevant date field. Leave both blank to export all records in your access scope.</p>
+            </div>
+            <div className="reports-grid">
+              {[
+                { type: 'applications' as const, title: 'Application register', description: 'Application number, title, institution, workflow status and key timestamps.', icon: BriefcaseBusiness },
+                { type: 'compliance' as const, title: 'Compliance submissions', description: 'Submission type, review status, version, review timestamps and notes.', icon: ShieldCheck },
+                { type: 'evidence' as const, title: 'Evidence register', description: 'Evidence categories, versions, lifecycle status and expiry dates.', icon: FileCheck2 },
+                { type: 'evc' as const, title: 'EVC visits and reports', description: 'Visit schedule, mode, status, report status and recorded outcomes.', icon: CalendarClock },
+                { type: 'notifications' as const, title: 'Notification delivery', description: 'Delivery status, retry counts, timestamps and recorded error details.', icon: MailWarning },
+              ].map(report => <article className="panel report-card" key={report.type}><div className="report-card-icon"><report.icon size={20}/></div><h3>{report.title}</h3><p>{report.description}</p><button className="secondary-button" onClick={() => void downloadReport(report.type)} disabled={reportDownloading !== null}>{reportDownloading === report.type ? 'Preparing CSV…' : 'Export CSV'}</button></article>)}
+            </div>
+            <p className="report-disclaimer">Exports reflect the current prototype data and are intended for operational analysis. They do not establish statutory compliance. Notification exports show persisted delivery state, not independent provider confirmation.</p>
+          </section>}
+          {view === 'notifications' && <section className="notification-operations-page">
+            <div className="notification-ops-summary-grid">
+              <article className="notification-ops-summary"><span>All visible records</span><strong>{notificationOperations?.total ?? '—'}</strong><small>Persisted notification records</small></article>
+              <article className="notification-ops-summary"><span>Pending</span><strong>{notificationOperations?.by_status.pending ?? 0}</strong><small>Awaiting delivery attempt</small></article>
+              <article className="notification-ops-summary notification-ops-danger"><span>Failed</span><strong>{notificationOperations?.failed ?? '—'}</strong><small>Delivery recovery needed</small></article>
+              <article className="notification-ops-summary notification-ops-ready"><span>Retry eligible</span><strong>{notificationOperations?.retry_ready ?? '—'}</strong><small>Under the manual retry safety limit</small></article>
+              <article className="notification-ops-summary"><span>Sent</span><strong>{notificationOperations?.by_status.sent ?? 0}</strong><small>Provider confirmed by delivery adapter</small></article>
+              <article className="notification-ops-summary"><span>Retry limit reached</span><strong>{notificationOperations?.exhausted ?? '—'}</strong><small>Requires investigation</small></article>
+            </div>
+            <section className="panel notification-ops-panel">
+              <div className="panel-heading"><div><h2>Delivery queue</h2><p>{notificationOperations ? 'Updated ' + formatDate(notificationOperations.as_of) + ' · up to 100 most recent records in your application scope' : 'Delivery states are loaded from persisted notification records.'}</p></div><div className="notification-ops-actions"><label className="task-filter-label" htmlFor="notification-status">Status <select id="notification-status" value={notificationStatusFilter} onChange={event => setNotificationStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="sent">Sent</option></select></label><button className="secondary-button" onClick={() => void handleQueueOperationalNotifications()} disabled={queueingNotifications}>{queueingNotifications ? 'Queueing…' : 'Queue expiry alerts'}</button></div></div>
+              {loadingNotificationOperations && !notificationOperations ? <div className="table-state"><div className="loading-line"/><span>Loading delivery records…</span></div>
+                : !notificationOperations ? <div className="empty-state"><strong>Delivery console unavailable</strong><p>Refresh to retry loading operational notification data.</p></div>
+                : notificationOperations.items.filter(item => notificationStatusFilter === 'all' || item.delivery_status === notificationStatusFilter).length === 0 ? <div className="empty-state"><div className="empty-icon"><Check size={22}/></div><strong>No matching notifications</strong><p>There are no records in the selected delivery state.</p></div>
+                : <div className="notification-ops-list">{notificationOperations.items.filter(item => notificationStatusFilter === 'all' || item.delivery_status === notificationStatusFilter).map(item => <article className="notification-ops-row" key={item.id}><span className={'notification-ops-state ' + item.delivery_status}/><div className="notification-ops-copy"><div className="notification-ops-title"><strong>{item.title}</strong><span className={'notification-ops-status ' + item.delivery_status}>{formatStatus(item.delivery_status)}</span></div><p>{item.application_number} · {item.application_title}</p><small>Recipient: {item.recipient_name} ({formatStatus(item.recipient_role)}) · {formatStatus(item.notification_type)} · {formatDate(item.created_at)}</small><small>Attempts: {item.attempt_count}/{item.max_attempts}{item.next_attempt_at ? ' · Next attempt ' + formatDate(item.next_attempt_at) : ''}{item.sent_at ? ' · Sent ' + formatDate(item.sent_at) : ''}</small>{item.last_error && <p className="notification-ops-error">{item.last_error}</p>}</div>{item.delivery_status === 'failed' && <button className="secondary-button small-button" disabled={retryingOperationalNotificationId === item.id || item.attempt_count >= 10} onClick={() => void handleRetryOperationalNotification(item)}>{retryingOperationalNotificationId === item.id ? 'Queueing…' : item.attempt_count >= 10 ? 'Retry limit reached' : 'Retry delivery'}</button>}</article>)}</div>}
+            </section>
+            <p className="notification-ops-footnote">This console displays the latest 100 visible records; summary totals cover the full visible scope. Retry changes a failed record back to pending, preserves attempt history, and writes an audit event. SMTP delivery is not claimed until a configured worker/provider reports success.</p>
           </section>}
 
           {view === 'applications' && <section className="panel applications-panel"><div className="panel-heading list-panel-heading"><div><h2>Application register</h2><p>{total} record{total===1?'':'s'} visible within your access scope</p></div><div className="register-actions"><button className="secondary-button small-button" onClick={() => void loadApplications()} disabled={loadingCases}><Activity size={15} className={loadingCases?'spin':''}/> Refresh</button>{user.role==='institution_user'&&<button className="primary-button small-button" onClick={() => setCreateOpen(true)}><Plus size={16}/> New application</button>}</div></div><div className="filter-row"><div className="search-field"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void loadApplications()}} placeholder="Search by title or application ID" aria-label="Search applications"/><kbd>Enter</kbd></div><div className="filter-select-wrap"><Filter size={16}/><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} aria-label="Filter by status"><option value="">All statuses</option>{Object.entries(statusLabels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select><ChevronDown size={14}/></div><button className="secondary-button filter-apply" onClick={()=>void loadApplications()}><SlidersHorizontal size={15}/> Apply filters</button></div><ApplicationTable applications={applications} loading={loadingCases} onOpen={application => { setSelectedApplication(application); setView('detail') }} /><div className="table-footer"><span>Showing <strong>{applications.length}</strong> of <strong>{total}</strong> matching records</span><span className="footer-scope"><ShieldCheck size={14}/> Access-scoped results</span></div></section>}
