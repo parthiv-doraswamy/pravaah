@@ -76,6 +76,11 @@ test('institution can sign in and create a draft application', async ({ page }) 
       return
     }
 
+    if (path === '/operations/reports/applications/export') {
+      await route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: '\uFEFFapplication_number,title,status\\nPVH-E2E-0001,Existing demo application,draft\\n' })
+      return
+    }
+
     if (path === '/operations/metrics') {
       await route.fulfill({ json: {
         as_of: '2026-10-23', total_applications: applications.length, active_applications: applications.length,
@@ -168,6 +173,13 @@ test('institution can sign in and create a draft application', async ({ page }) 
   await page.getByRole('button', { name: 'Task inbox' }).click()
   await expect(page.getByRole('heading', { name: 'Prioritized task list' })).toBeVisible()
   await expect(page.getByText('Complete draft application')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Reports & exports' }).click()
+  await expect(page.getByRole('heading', { name: 'Operational reports' })).toBeVisible()
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export CSV' }).first().click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('pravaah-applications-report.csv')
 })
 
 
