@@ -80,6 +80,30 @@ def main() -> None:
                 )
             )
 
+        bureau_officer = db.scalar(select(User).where(User.email == "demo.bureau@example.test"))
+        if bureau_officer is None:
+            db.add(
+                User(
+                    email="demo.bureau@example.test",
+                    full_name="Demo Bureau Officer",
+                    role="bureau_officer",
+                    password_hash=hash_password(password),
+                    is_active=True,
+                )
+            )
+
+        competent_authority = db.scalar(select(User).where(User.email == "demo.authority@example.test"))
+        if competent_authority is None:
+            db.add(
+                User(
+                    email="demo.authority@example.test",
+                    full_name="Demo Competent Authority",
+                    role="competent_authority",
+                    password_hash=hash_password(password),
+                    is_active=True,
+                )
+            )
+
         demo_cases = [
             ("PVH-DEMO-1001", "New programme approval", "draft", demo_institution.id),
             ("PVH-DEMO-1002", "Infrastructure compliance review", "submitted", demo_institution.id),

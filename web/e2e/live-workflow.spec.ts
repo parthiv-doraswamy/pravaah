@@ -59,37 +59,72 @@ test('live workflow enforces role transitions, institution scope, and audit inte
   )
   expect(foreignTimeline.status()).toBe(404)
 
-  // A valid reviewer action updates status and creates a verifiable audit event.
-  const transition = await request.post(
+  const bureauHeaders = await login(request, 'demo.bureau@example.test')
+  const authorityHeaders = await login(request, 'demo.authority@example.test')
+
+  async function transition(
+    headers: Record<string, string>,
+    expected_status: string,
+    target_status: string,
+    reason: string,
+  ) {
+    const response = await request.post(
+      `http://127.0.0.1:8000/api/v1/applications/${submitted!.id}/transitions`,
+      { headers, data: { expected_status, target_status, reason } },
+    )
+    expect(response.status(), `transition ${expected_status} -> ${target_status}: ${await response.text()}`).toBe(200)
+    expect((await response.json()).status).toBe(target_status)
+  }
+
+  // Exercise every human role in the complete approval path.
+  await transition(reviewerHeaders, 'submitted', 'under_scrutiny', 'E2E: scrutiny started')
+  await transition(reviewerHeaders, 'under_scrutiny', 'recommended_for_approval', 'E2E: evidence reviewed')
+
+  // A scrutiny officer must not impersonate the bureau role at the forwarding stage.
+  const unauthorizedForward = await request.post(
     `http://127.0.0.1:8000/api/v1/applications/${submitted!.id}/transitions`,
     {
       headers: reviewerHeaders,
       data: {
-        expected_status: 'submitted',
-        target_status: 'under_scrutiny',
-        reason: 'Live API browser integration test',
+        expected_status: 'recommended_for_approval',
+        target_status: 'pending_authority_decision',
+        reason: 'E2E must reject role bypass',
       },
     },
   )
-  expect(transition.status(), await transition.text()).toBe(200)
-  expect((await transition.json()).status).toBe('under_scrutiny')
+  expect(unauthorizedForward.status()).toBe(409)
+
+  await transition(bureauHeaders, 'recommended_for_approval', 'pending_authority_decision', 'E2E: forwarded to authority')
+  await transition(authorityHeaders, 'pending_authority_decision', 'approved', 'E2E: competent authority decision')
+
+  // The final state must survive a fresh read from the database.
+  const persisted = await request.get(
+    `http://127.0.0.1:8000/api/v1/applications/${submitted!.id}`,
+    { headers: authorityHeaders },
+  )
+  expect(persisted.status(), await persisted.text()).toBe(200)
+  expect((await persisted.json()).status).toBe('approved')
 
   const verification = await request.get(
     `http://127.0.0.1:8000/api/v1/applications/${submitted!.id}/events/verify`,
-    { headers: reviewerHeaders },
+    { headers: authorityHeaders },
   )
   expect(verification.status()).toBe(200)
   const chain = await verification.json() as { valid: boolean; event_count: number; first_invalid_sequence: number | null }
   expect(chain.valid).toBe(true)
-  expect(chain.event_count).toBeGreaterThanOrEqual(2)
+  expect(chain.event_count).toBeGreaterThanOrEqual(5)
   expect(chain.first_invalid_sequence).toBeNull()
 
   const timeline = await request.get(
     `http://127.0.0.1:8000/api/v1/applications/${submitted!.id}/events`,
-    { headers: reviewerHeaders },
+    { headers: authorityHeaders },
   )
   expect(timeline.status()).toBe(200)
-  const events = await timeline.json() as { sequence: number; event_type: string; to_status: string | null }[]
+  const events = await timeline.json() as { sequence: number; event_type: string; from_status: string | null; to_status: string | null; reason: string | null }[]
   expect(events.map(event => event.sequence)).toEqual(events.map((_, index) => index + 1))
   expect(events.some(event => event.to_status === 'under_scrutiny')).toBe(true)
+  expect(events.some(event => event.to_status === 'recommended_for_approval')).toBe(true)
+  expect(events.some(event => event.to_status === 'pending_authority_decision')).toBe(true)
+  expect(events.some(event => event.to_status === 'approved')).toBe(true)
+  expect(events.some(event => event.reason === 'E2E: competent authority decision')).toBe(true)
 })
