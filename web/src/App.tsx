@@ -768,6 +768,30 @@ function App() {
               <MetricCard icon={<FileCheck2 size={19}/>} label="EVC reports pending" value={operationsMetrics ? String(operationsMetrics.evc_reports_pending) : '—'} note="Completed visits without submitted reports" tone="green" trendIcon={<ClipboardList size={14}/>} />
             </section>
 
+            <section className="pendency-analytics-grid">
+              <div className="panel pendency-panel">
+                <div className="panel-heading"><div><h2>Pendency aging</h2><p>{pendencyAnalytics ? `\u00a0${pendencyAnalytics.total_pending} cases waiting · As of ${formatDate(pendencyAnalytics.as_of)}` : 'Loading scoped workload data…'}</p></div><Clock3 size={18} className="panel-heading-icon"/></div>
+                <div className="pendency-buckets">
+                  {[
+                    { key: '0-2_days', label: '0–2 days', tone: 'bar-green' },
+                    { key: '3-7_days', label: '3–7 days', tone: 'bar-blue' },
+                    { key: '8-14_days', label: '8–14 days', tone: 'bar-violet' },
+                    { key: '15+_days', label: '15+ days', tone: 'bar-amber' },
+                  ].map(bucket => <div className="pendency-bucket" key={bucket.key}><span>{bucket.label}</span><strong>{pendencyAnalytics?.aging_buckets[bucket.key] ?? '—'}</strong><div className="bar-track"><div className={`bar-fill ${bucket.tone}`} style={{ width: `${pendencyAnalytics?.total_pending ? ((pendencyAnalytics.aging_buckets[bucket.key] || 0) / pendencyAnalytics.total_pending) * 100 : 0}%` }}/></div></div>)}
+                </div>
+                <div className="panel-heading pendency-subheading"><div><h3>Workload by status</h3><p>Average and oldest waiting time</p></div></div>
+                {pendencyAnalytics?.by_status.length
+                  ? <div className="pendency-status-list">{pendencyAnalytics.by_status.map(item => <div className="pendency-status-row" key={item.status}><span>{formatStatus(item.status)}</span><strong>{item.count}</strong><small>Avg {item.average_days}d · Oldest {item.oldest_days}d</small></div>)}</div>
+                  : <div className="dashboard-empty"><Check size={18}/><span>{pendencyAnalytics ? 'No applications are currently waiting in review stages.' : 'Pendency analytics unavailable.'}</span></div>}
+              </div>
+              <div className="panel pendency-panel oldest-panel">
+                <div className="panel-heading"><div><h2>Oldest pending cases</h2><p>Up to 10 cases, longest waiting first</p></div><button className="text-button" onClick={() => setView('applications')}>Open register <ArrowRight size={14}/></button></div>
+                {pendencyAnalytics?.oldest_items.length
+                  ? <div className="oldest-pendency-list">{pendencyAnalytics.oldest_items.map(item => <div className="oldest-pendency-row" key={item.application_id}><div className="case-icon"><FileText size={15}/></div><div className="oldest-pendency-copy"><strong>{item.title}</strong><span>{item.application_number} · {item.institution_name}</span><small>{formatStatus(item.status)} · Waiting since {formatDate(item.waiting_since)}</small></div><span className={`pendency-age ${item.days_waiting >= 15 ? 'pendency-age-high' : item.days_waiting >= 8 ? 'pendency-age-warn' : ''}`}>{item.days_waiting}d</span></div>)}</div>
+                  : <div className="dashboard-empty"><Check size={18}/><span>{pendencyAnalytics ? 'No pending cases to display.' : 'Pendency analytics unavailable.'}</span></div>}
+              </div>
+            </section>
+
             <section className="content-grid"><div className="panel recent-panel"><div className="panel-heading"><div><h2>Recent applications</h2><p>Latest activity in your visible register</p></div><button className="subtle-icon-button" onClick={() => setView('applications')} aria-label="View all applications"><ArrowRight size={17}/></button></div><ApplicationTable applications={applications.slice(0, 5)} loading={loadingCases} onOpen={application => { setSelectedApplication(application); setView('detail') }} compact /></div><div className="panel status-panel"><div className="panel-heading"><div><h2>Workflow health</h2><p>Based on visible application statuses</p></div><Activity size={18} className="panel-heading-icon"/></div><div className="status-total"><strong>{total}</strong><span>total visible records</span></div><div className="status-bars">{[
               {label:'Draft', count:applications.filter(a=>a.status==='draft').length, color:'bar-slate'},
               {label:'Submitted', count:applications.filter(a=>a.status==='submitted').length, color:'bar-blue'},
