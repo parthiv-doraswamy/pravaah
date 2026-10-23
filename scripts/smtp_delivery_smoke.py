@@ -7,8 +7,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import select
@@ -21,8 +20,6 @@ from app.models.notification_attempt import NotificationAttempt
 from app.services.notification_delivery import process_due_notifications
 
 MAILPIT_API = os.getenv("MAILPIT_API", "http://127.0.0.1:8025")
-SMTP_PASSWORD_SENTINEL = "smtp-ci-secret-that-must-not-appear-in-logs"
-
 
 def wait_for_mailpit(timeout_seconds: int = 90) -> None:
     deadline = time.monotonic() + timeout_seconds
@@ -121,7 +118,7 @@ def main() -> None:
 
     assert matching_message is not None, "Expected message was not received by the SMTP sink"
     with get_session_factory()() as db:
-        notification = db.get(NotificationRecord, notification_id)
+        notification = db.get(NotificationRecord, UUID(notification_id))
         assert notification is not None
         assert notification.delivery_status == "sent"
         assert notification.attempt_count == 1
