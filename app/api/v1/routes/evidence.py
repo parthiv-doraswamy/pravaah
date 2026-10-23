@@ -132,6 +132,7 @@ def renew_evidence(
     if payload.issued_on and payload.expires_on < payload.issued_on:
         raise HTTPException(status_code=422, detail="Expiry date cannot be earlier than issue date")
 
+    prior_status = prior.lifecycle_status
     prior.lifecycle_status = "replaced"
     renewed = ApplicationEvidence(
         application_id=application_id,
@@ -153,7 +154,7 @@ def renew_evidence(
         db,
         application_id=application_id,
         event_type="evidence_renewed",
-        from_status=prior.lifecycle_status,
+        from_status=prior_status,
         to_status=renewed.lifecycle_status,
         actor_user_id=user.id,
         reason="New evidence version created; prior record retained",
