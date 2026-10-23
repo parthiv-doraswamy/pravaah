@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type OperationsMetrics, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type OperationsMetrics, type PendencyAnalytics, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
 type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
@@ -80,7 +80,7 @@ function App() {
   const [transitionBusy, setTransitionBusy] = useState(false)
   const [compliance, setCompliance] = useState<ComplianceOverview | null>(null)
   const [operationsMetrics, setOperationsMetrics] = useState<OperationsMetrics | null>(null)
-  const [pendencyAnalytics, setPendencyAnalytics] = useState<import('./api').PendencyAnalytics | null>(null)
+  const [pendencyAnalytics, setPendencyAnalytics] = useState<PendencyAnalytics | null>(null)
   const [loadingCompliance, setLoadingCompliance] = useState(false)
   const [escalations, setEscalations] = useState<ComplianceEscalation[]>([])
   const [loadingEscalations, setLoadingEscalations] = useState(false)
@@ -770,7 +770,7 @@ function App() {
 
             <section className="pendency-analytics-grid">
               <div className="panel pendency-panel">
-                <div className="panel-heading"><div><h2>Pendency aging</h2><p>{pendencyAnalytics ? `\u00a0${pendencyAnalytics.total_pending} cases waiting · As of ${formatDate(pendencyAnalytics.as_of)}` : 'Loading scoped workload data…'}</p></div><Clock3 size={18} className="panel-heading-icon"/></div>
+                <div className="panel-heading"><div><h2>Pendency aging</h2><p>{pendencyAnalytics ? `${pendencyAnalytics.total_pending} cases waiting · As of ${formatDate(pendencyAnalytics.as_of)}` : 'Loading scoped workload data…'}</p></div><Clock3 size={18} className="panel-heading-icon"/></div>
                 <div className="pendency-buckets">
                   {[
                     { key: '0-2_days', label: '0–2 days', tone: 'bar-green' },
