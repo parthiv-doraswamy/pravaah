@@ -50,3 +50,16 @@ Run `pytest tests/test_compliance_submissions.py` and `ruff check app tests`, th
 ### Verification
 - Added tests for renewal lineage, preserving the previous reference, event-chain history, duplicate renewal rejection, and expired renewal date rejection.
 - Run `pytest tests/test_evidence.py tests/test_evidence_attachments.py tests/test_evidence_integrity.py`, `ruff check app tests`, frontend production build, and the full CI suite.
+
+
+## Chunk 5: Notification delivery and escalation recovery
+
+- The scheduled worker queues deduplicated expiry/deadline alerts, opens auditable overdue escalations, and attempts optional SMTP delivery with bounded exponential backoff and redacted failure details.
+- Added `POST /api/v1/notifications/{notification_id}/retry` for a signed-in recipient to recover a failed notification. It keeps the prior attempt count/history, schedules the record immediately, and extends the attempt limit by one only when the previous limit was exhausted (hard cap: 10 attempts).
+- Manual retry is recipient-scoped, only applies to failed deliveries, and records `notification_delivery_retry_requested` in the application audit chain. It queues work; it does not claim delivery succeeded.
+- The notification popover shows delivery status, attempt counts, redacted errors and pending retry time, with a retry action for failed deliveries. Escalation resolution remains restricted to authorized reviewer roles and is audit-recorded.
+- SMTP remains optional; if it is not configured, notifications remain in-app and email delivery is deferred. Expiry and deadline windows are configurable demo workflow rules, not official AICTE policy.
+
+### Verification
+- Added API tests for retrying a failed delivery, preserving the attempt count, increasing the bounded retry allowance, audit history, pending-state rejection, and recipient scoping.
+- Run `pytest tests/test_notifications.py tests/test_notification_delivery.py tests/test_notification_worker.py`, `ruff check app tests`, frontend production build, and the full CI suite.
