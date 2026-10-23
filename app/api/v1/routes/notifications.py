@@ -1,6 +1,5 @@
 """Persistent in-app notifications and idempotent expiry-alert queueing."""
 
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
