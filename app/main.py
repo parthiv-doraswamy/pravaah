@@ -1,15 +1,37 @@
 """FastAPI entry point for PRAVAAH."""
 
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import AsyncIterator
+
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.db.session import get_engine
-from app.api.v1.router import api_router
 
 settings = get_settings()
+
+
+def run_database_migrations() -> None:
+    """Apply pending Alembic revisions using the configured database URL."""
+    config_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+    command.upgrade(Config(str(config_path)), "head")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Ensure production schema is current before the API starts serving traffic."""
+    if settings.app_env.lower() == "production":
+        run_database_migrations()
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     description=(
@@ -17,6 +39,7 @@ app = FastAPI(
         "deadline monitoring, and auditable case history."
     ),
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
