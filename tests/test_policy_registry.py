@@ -100,5 +100,7 @@ def test_policy_versions_must_increase_and_existing_version_is_unchanged(api_cli
 
 
 def test_policy_effective_time_must_include_timezone():
+    data = _payload().model_dump()
+    data["effective_from"] = datetime(2026, 10, 23)
     with pytest.raises(ValueError, match="must include a timezone"):
-        _payload().model_copy(update={"effective_from": datetime(2026, 10, 23)})
+        PolicyCreate(**data)
