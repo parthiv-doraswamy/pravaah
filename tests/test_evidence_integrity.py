@@ -1,6 +1,5 @@
 """Regression tests for detecting corrupted evidence attachments at download time."""
 
-from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select
