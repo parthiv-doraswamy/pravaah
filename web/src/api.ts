@@ -290,7 +290,7 @@ export const api = {
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
   complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
   operationsMetrics: () => request<OperationsMetrics>('/operations/metrics'),
-  pendencyAnalytics: () => request<import('./api').PendencyAnalytics>('/operations/pendency'),
+  pendencyAnalytics: () => request<PendencyAnalytics>('/operations/pendency'),
   submissions: (applicationId: string) => request<ComplianceSubmission[]>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`),
   createSubmission: (applicationId: string, payload: { submission_type: string; title: string; declaration: string; evidence_ids: string[] }) =>
     request<ComplianceSubmission>(`/compliance/applications/${encodeURIComponent(applicationId)}/submissions`, { method: 'POST', body: JSON.stringify(payload) }),
