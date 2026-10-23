@@ -9,8 +9,15 @@ Phase 4 turns the workflow data already stored by PRAVAAH into scoped operationa
 - [x] **Chunk 1 — Dashboard metrics and operational KPIs.** Added `GET /api/v1/operations/metrics`, returning role-scoped application status counts, active and awaiting-review totals, pending submission reviews, expired and near-expiry evidence, open escalations, failed notifications, and completed EVC visits with reports still pending. Added dashboard KPI cards backed by the API and tests for authentication, aggregate correctness, and institution scoping.
 - [x] **Chunk 2 — Pendency and workload analytics.** Added `GET /api/v1/operations/pendency` with scope-aware age buckets, workload by status (count, average age, oldest age), and the ten oldest pending cases. The dashboard now shows age distribution and institution-labelled oldest cases. Integration tests verify age bucketing and institution isolation.
 - [x] **Chunk 3 — Unified task inbox.** Added `GET /api/v1/operations/inbox` and a role-aware task inbox for application workflow actions, compliance submission reviews/corrections, expiring current evidence, open escalations, pending EVC reports, and failed notification deliveries for the signed-in user. The UI groups counts by priority, filters by priority, and links tasks to their relevant workspace. Tests cover authentication, institution isolation, and the browser inbox flow.
-- [ ] **Chunk 4 — Notification operations console.**
+- [x] **Chunk 4 — Notification operations console.** Added role-gated `GET /api/v1/notifications/operations` with status counts, retry-eligible/exhausted counts, and the latest 100 notification records within the user's server-authorized application scope. Added an operations-only retry endpoint that enforces scope and retry limits, preserves attempt history, and appends an audit event. The new UI has delivery health cards, status filtering, failure context, retry actions, and idempotent expiry-alert queueing. Integration and browser tests cover role restrictions and recovery.
 - [ ] **Chunk 5 — Reports and exports.**
+
+## Notification operations semantics and limitations
+
+- The operations console is restricted to notification-queue roles. Both listing and manual retry enforce the application's server-side visibility scope; an operations role does not grant access to notifications attached to unrelated applications.
+- Status counts cover all visible notification records, while the console returns the latest 100 records ordered by creation time. Failed records at ten attempts are marked exhausted and cannot be manually retried.
+- Retry changes a failed record to pending, schedules an immediate next attempt, clears the current error field, preserves the attempt count, adjusts the attempt ceiling only when necessary, and writes an application audit event. It does not itself send email or guarantee delivery.
+- The queue-expiry action is idempotent. The current prototype's delivery worker/provider configuration remains a separate concern; UI status must not be interpreted as provider-confirmed delivery unless a worker records that result.
 
 ## Task inbox semantics and limitations
 
