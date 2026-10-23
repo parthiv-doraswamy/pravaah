@@ -189,6 +189,14 @@ export type NotificationQueueResult = {
   detail: string
 }
 
+export type EVCEligibility = {
+  application_id: string
+  eligible: boolean
+  reasons: string[]
+  active_visit_id: string | null
+  eligible_application_statuses: string[]
+}
+
 export type EVCVisit = {
   id: string
   application_id: string
@@ -297,6 +305,7 @@ export const api = {
     if (!response.ok) throw new Error(`Download failed (${response.status})`)
     return response.blob()
   },
+  evcEligibility: (applicationId: string) => request<EVCEligibility>(`/evc/applications/${encodeURIComponent(applicationId)}/eligibility`),
   evcVisits: (options: { status?: string; applicationId?: string } = {}) => {
     const params = new URLSearchParams()
     if (options.status) params.set('status_filter', options.status)
