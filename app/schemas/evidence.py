@@ -31,6 +31,9 @@ class EvidenceResponse(BaseModel):
     title: str
     category: str
     reference_number: str | None
+    version: int
+    supersedes_evidence_id: UUID | None
+    lifecycle_status: str
     issued_on: date | None
     expires_on: date | None
     policy_key: str | None
