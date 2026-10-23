@@ -71,6 +71,7 @@ class EVCVisitResponse(BaseModel):
         if value is None or not isinstance(value, list):
             return None
         return [str(item) for item in value if item is not None]
+
     outcome_summary: str | None
     observations: str | None
     report_status: str
