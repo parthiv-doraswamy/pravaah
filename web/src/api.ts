@@ -41,6 +41,10 @@ export type OperationsMetrics = {
   evc_reports_pending: number
 }
 
+export type PendencyItem = { application_id: string; application_number: string; title: string; status: string; institution_name: string; waiting_since: string; days_waiting: number }
+export type PendencyStatusSummary = { status: string; count: number; oldest_days: number; average_days: number }
+export type PendencyAnalytics = { as_of: string; total_pending: number; aging_buckets: Record<string, number>; by_status: PendencyStatusSummary[]; oldest_items: PendencyItem[] }
+
 export type TokenResponse = {
   access_token: string
   token_type: string
