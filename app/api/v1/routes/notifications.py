@@ -56,6 +56,61 @@ def mark_notification_read(
 
 
 @router.post(
+    "/{notification_id}/retry",
+    response_model=NotificationResponse,
+    summary="Retry a failed notification delivery",
+)
+def retry_notification_delivery(
+    notification_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> NotificationRecord:
+    """Requeue the signed-in user's failed notification without erasing attempt history."""
+    notification = db.scalar(
+        select(NotificationRecord)
+        .where(
+            NotificationRecord.id == notification_id,
+            NotificationRecord.recipient_user_id == user.id,
+        )
+        .with_for_update()
+    )
+    if notification is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    if notification.delivery_status != "failed":
+        raise HTTPException(status_code=409, detail="Only failed notifications can be retried")
+    if notification.attempt_count >= 10:
+        raise HTTPException(status_code=409, detail="Notification reached the manual retry safety limit")
+
+    now = utc_now()
+    previous_attempt_limit = notification.max_attempts
+    if notification.attempt_count >= notification.max_attempts:
+        notification.max_attempts = min(notification.max_attempts + 1, 10)
+    notification.delivery_status = "pending"
+    notification.next_attempt_at = now
+    notification.last_error = None
+    notification.updated_at = now
+    application = db.get(Application, notification.application_id)
+    append_event(
+        db,
+        application_id=notification.application_id,
+        event_type="notification_delivery_retry_requested",
+        from_status=application.status if application else None,
+        to_status=application.status if application else None,
+        actor_user_id=user.id,
+        metadata={
+            "notification_id": str(notification.id),
+            "attempt_count": notification.attempt_count,
+            "previous_max_attempts": previous_attempt_limit,
+            "max_attempts": notification.max_attempts,
+            "source": "recipient_recovery",
+        },
+    )
+    db.commit()
+    db.refresh(notification)
+    return notification
+
+
+@router.post(
     "/queue-expiry",
     response_model=NotificationQueueResult,
     summary="Queue idempotent in-app notifications for expiry alerts",
