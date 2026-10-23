@@ -57,7 +57,8 @@ def test_delivery_retries_with_backoff_and_records_attempts(api_client_and_sessi
         assert record.next_attempt_at.replace(tzinfo=UTC) == now + timedelta(minutes=5)
         attempt = db.query(NotificationAttempt).filter_by(notification_id=notification_id).one()
         assert attempt.outcome == "retry_scheduled"
-        assert "temporary SMTP outage" in attempt.error_message
+        assert attempt.error_message == "Email delivery failed (OSError); provider details redacted."
+        assert "temporary SMTP outage" not in attempt.error_message
 
     with db_factory() as db:
         second = process_due_notifications(

@@ -115,7 +115,9 @@ def process_due_notifications(
             outcome = "sent"
             sent += 1
         except Exception as error:
-            message = f"{type(error).__name__}: {error}"[:2000]
+            # Provider exception text can contain hostnames, addresses, or credentials.
+            # Persist only the exception class and a fixed message; keep details out of audit rows.
+            message = f"Email delivery failed ({type(error).__name__}); provider details redacted."
             notification.last_error = message
             if attempt_number >= notification.max_attempts:
                 notification.delivery_status = "failed"
