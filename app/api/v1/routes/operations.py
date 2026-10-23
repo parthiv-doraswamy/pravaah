@@ -39,7 +39,7 @@ def operations_metrics(
     by_status = {status: count for status, count in status_rows}
     total = sum(by_status.values())
     completed = by_status.get("completed", 0)
-    active = sum(count for status, count in by_status.items() if status not in {"completed", "withdrawn"})
+    active = sum(count for status, count in by_status.items() if status not in {"completed", "withdrawn", "approved", "rejected"})
     awaiting = sum(
         count for status, count in by_status.items()
         if status in {
