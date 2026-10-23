@@ -1,10 +1,10 @@
 """Guarded workflow actions, case timeline, chain verification, and policy registry."""
 
-from datetime import UTC
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,7 @@ from app.schemas.workflow import (
     PolicyResponse,
     TransitionRequest,
 )
-from app.services.workflow import transition_application, verify_event_chain
+from app.services.workflow import WORKFLOW_POLICY_KEY, transition_application, verify_event_chain
 
 router = APIRouter()
 
@@ -100,7 +100,7 @@ def create_policy_version(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> PolicyVersion:
-    """Store a validated immutable version; publishing/activation is intentionally separate."""
+    """Store a validated immutable version; activation is a separate reviewed action."""
     if user.role not in {"policy_admin", "system_admin"}:
         raise HTTPException(status_code=403, detail="Your role cannot create policy versions")
     try:
@@ -134,5 +134,53 @@ def create_policy_version(
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="This policy version already exists") from exc
+    db.refresh(policy)
+    return policy
+
+
+@router.post(
+    "/policies/registry/{policy_key}/{version}/activate",
+    response_model=PolicyResponse,
+    summary="Activate a reviewed application workflow policy version",
+)
+def activate_policy_version(
+    policy_key: str,
+    version: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PolicyVersion:
+    """Activate only the dedicated workflow policy; activation is an explicit admin action."""
+    if user.role not in {"policy_admin", "system_admin"}:
+        raise HTTPException(status_code=403, detail="Your role cannot activate policy versions")
+    if policy_key != WORKFLOW_POLICY_KEY:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Runtime transition enforcement currently supports only '{WORKFLOW_POLICY_KEY}'",
+        )
+    policy = db.scalar(
+        select(PolicyVersion).where(
+            PolicyVersion.policy_key == policy_key,
+            PolicyVersion.version == version,
+        ).with_for_update()
+    )
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Policy version not found")
+    effective_from = policy.effective_from
+    if effective_from.tzinfo is None:
+        effective_from = effective_from.replace(tzinfo=UTC)
+    if effective_from > datetime.now(UTC):
+        raise HTTPException(status_code=409, detail="Policy is not effective yet")
+    try:
+        validate_policy_rules(policy.rules_schema_version, policy.rules)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid policy rules: {exc}") from exc
+
+    db.execute(
+        update(PolicyVersion)
+        .where(PolicyVersion.policy_key == policy_key)
+        .values(is_active=False)
+    )
+    policy.is_active = True
+    db.commit()
     db.refresh(policy)
     return policy
