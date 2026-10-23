@@ -138,6 +138,7 @@ def notification_operations(
         NotificationOperationsItem(
             id=record.id,
             application_id=application.id,
+            evidence_id=record.evidence_id,
             application_number=application.application_number,
             application_title=application.title,
             recipient_name=recipient.full_name,
