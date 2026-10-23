@@ -9,6 +9,7 @@ import hashlib
 import os
 import subprocess
 import time
+from uuid import UUID
 
 import httpx
 from sqlalchemy import func, select
@@ -219,9 +220,9 @@ def verify_attachment_survived_restart(
     with get_session_factory()() as db:
         attachment_count = db.scalar(
             select(func.count()).select_from(EvidenceAttachment).where(
-                EvidenceAttachment.id == attachment_id,
-                EvidenceAttachment.application_id == application_id,
-                EvidenceAttachment.evidence_id == evidence_id,
+                EvidenceAttachment.id == UUID(attachment_id),
+                EvidenceAttachment.application_id == UUID(application_id),
+                EvidenceAttachment.evidence_id == UUID(evidence_id),
             )
         )
         assert attachment_count == 1, "Attachment database row was not preserved"
