@@ -79,6 +79,21 @@ test('live workflow enforces role transitions, institution scope, and audit inte
   // Exercise every human role in the complete approval path.
   await transition(reviewerHeaders, 'submitted', 'under_scrutiny', 'E2E: scrutiny started')
   await transition(reviewerHeaders, 'under_scrutiny', 'recommended_for_approval', 'E2E: evidence reviewed')
+
+  // A scrutiny officer must not impersonate the bureau role at the forwarding stage.
+  const unauthorizedForward = await request.post(
+    `http://127.0.0.1:8000/api/v1/applications/${submitted!.id}/transitions`,
+    {
+      headers: reviewerHeaders,
+      data: {
+        expected_status: 'recommended_for_approval',
+        target_status: 'pending_authority_decision',
+        reason: 'E2E must reject role bypass',
+      },
+    },
+  )
+  expect(unauthorizedForward.status()).toBe(409)
+
   await transition(bureauHeaders, 'recommended_for_approval', 'pending_authority_decision', 'E2E: forwarded to authority')
   await transition(authorityHeaders, 'pending_authority_decision', 'approved', 'E2E: competent authority decision')
 
