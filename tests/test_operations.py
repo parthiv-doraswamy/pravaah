@@ -133,3 +133,58 @@ def test_operations_metrics_requires_authentication(api_client_and_sessions):
     client, _ = api_client_and_sessions
     response = client.get("/api/v1/operations/metrics")
     assert response.status_code == 401
+
+
+def test_pendency_analytics_reports_aging_and_respects_institution_scope(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    with db_factory() as db:
+        own = Institution(name="Pendency College", code="PEND-OWN", region_code="PEND")
+        other = Institution(name="Out of Scope College", code="PEND-OTHER", region_code="OTHER")
+        db.add_all([own, other])
+        db.flush()
+        user = User(
+            email="pendency-owner@example.test",
+            full_name="Pendency Owner",
+            role="institution_user",
+            password_hash=hash_password("Test-password-123!"),
+            institution_id=own.id,
+        )
+        old_case = Application(
+            application_number="PVH-PEND-OLD",
+            title="Old pending case",
+            status="under_scrutiny",
+            institution_id=own.id,
+            submitted_at=datetime.now(UTC) - timedelta(days=20),
+        )
+        recent_case = Application(
+            application_number="PVH-PEND-RECENT",
+            title="Recent pending case",
+            status="committee_review",
+            institution_id=own.id,
+            submitted_at=datetime.now(UTC) - timedelta(days=5),
+        )
+        hidden_case = Application(
+            application_number="PVH-PEND-HIDDEN",
+            title="Hidden old case",
+            status="submitted",
+            institution_id=other.id,
+            submitted_at=datetime.now(UTC) - timedelta(days=30),
+        )
+        db.add_all([user, old_case, recent_case, hidden_case])
+        db.commit()
+        email = user.email
+
+    login = client.post("/api/v1/auth/login", json={"email": email, "password": "Test-password-123!"})
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = client.get("/api/v1/operations/pendency", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_pending"] == 2
+    assert payload["aging_buckets"]["15+_days"] == 1
+    assert payload["aging_buckets"]["3-7_days"] == 1
+    assert [item["application_number"] for item in payload["oldest_items"]] == [
+        "PVH-PEND-OLD",
+        "PVH-PEND-RECENT",
+    ]
+    assert payload["by_status"][0]["status"] == "committee_review" or payload["by_status"][0]["status"] == "under_scrutiny"
