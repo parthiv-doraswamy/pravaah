@@ -150,7 +150,7 @@ def run_expiry_monitoring(db: Session, today: date | None = None) -> dict[str, i
         else:
             skipped += 1
 
-        if escalation_after is not None and days < -escalation_after:
+        if escalation_after is not None and days <= -escalation_after:
             escalation_key = f"expired:{evidence.id}:{evidence.expires_on.isoformat()}:after-{escalation_after}d"
             escalation_summary = (
                 f"{evidence.title} expired on {evidence.expires_on.isoformat()} and remains expired "
