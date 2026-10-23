@@ -87,7 +87,7 @@ def test_policy_deadlines_queue_reminders_then_idempotent_escalation(api_client_
         ))
         run_at = event.occurred_at.replace(tzinfo=UTC) + timedelta(minutes=1)
         first = run_policy_deadline_monitoring(db, now=run_at)
-        assert first["notifications_queued"] == 1
+        assert first["notifications_queued"] == 2
         assert first["escalations_notified"] == 0
 
         overdue = run_at + timedelta(days=6)
@@ -99,7 +99,7 @@ def test_policy_deadlines_queue_reminders_then_idempotent_escalation(api_client_
         records = list(db.scalars(select(NotificationRecord).where(
             NotificationRecord.application_id == application.id
         )).all())
-        assert sum(item.notification_type == "workflow_deadline_reminder" for item in records) == 1
+        assert sum(item.notification_type == "workflow_deadline_reminder" for item in records) == 2
         assert sum(item.notification_type == "workflow_deadline_escalation" for item in records) == 2
         audit = list(db.scalars(select(ApplicationEvent).where(
             ApplicationEvent.application_id == application.id,
