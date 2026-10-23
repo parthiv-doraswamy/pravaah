@@ -33,9 +33,9 @@ def _active_deadline_rules(db: Session) -> dict[str, PolicyDeadlineRule]:
         return {}
     try:
         rules = validate_policy_rules(policy.rules_schema_version, policy.rules)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
         # Runtime policy corruption must not silently create guessed deadlines.
-        return {}
+        raise RuntimeError("Active workflow policy contains invalid deadline rules") from exc
     return {rule.event: rule for rule in rules.deadlines}
 
 
