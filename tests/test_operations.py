@@ -187,4 +187,4 @@ def test_pendency_analytics_reports_aging_and_respects_institution_scope(api_cli
         "PVH-PEND-OLD",
         "PVH-PEND-RECENT",
     ]
-    assert payload["by_status"][0]["status"] == "committee_review" or payload["by_status"][0]["status"] == "under_scrutiny"
+    assert {item["status"] for item in payload["by_status"]} == {"committee_review", "under_scrutiny"}
