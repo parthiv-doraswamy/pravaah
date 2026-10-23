@@ -1,9 +1,11 @@
-"""Role-scoped operational metrics for the workspace dashboard."""
+"""Role-scoped operational metrics and downloadable reports."""
 
+import csv
+import io
 from datetime import timedelta
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -288,4 +290,112 @@ def task_inbox(
         by_type[item.task_type] = by_type.get(item.task_type, 0) + 1
     return TaskInbox(
         as_of=today, total=len(tasks), by_priority=by_priority, by_type=by_type, items=tasks[:100],
+    )
+
+
+_REPORT_TYPES = {"applications", "compliance", "evidence", "evc", "notifications"}
+
+
+def _csv_cell(value: object) -> str:
+    """Prevent exported text from being interpreted as a spreadsheet formula."""
+    text = "" if value is None else str(value)
+    if text.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + text
+    return text
+
+
+@router.get("/reports/{report_type}/export", summary="Export a scoped operational report as CSV")
+def export_operations_report(
+    report_type: str,
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Export persisted records only for applications visible to the authenticated user."""
+    if report_type not in _REPORT_TYPES:
+        raise HTTPException(status_code=404, detail="Unknown report type")
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail="from_date must be on or before to_date")
+
+    visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).order_by(None).subquery()
+    visible_app_ids = select(visible_ids.c.id)
+    rows: list[tuple[object, ...]] = []
+
+    if report_type == "applications":
+        statement = select(Application, Institution.name).join(
+            Institution, Institution.id == Application.institution_id
+        ).where(Application.id.in_(visible_app_ids))
+        if from_date:
+            statement = statement.where(func.date(Application.created_at) >= from_date.isoformat())
+        if to_date:
+            statement = statement.where(func.date(Application.created_at) <= to_date.isoformat())
+        rows = [(a.application_number, a.title, institution, a.status, a.submitted_at, a.created_at, a.updated_at)
+                for a, institution in db.execute(statement.order_by(Application.created_at.desc())).all()]
+        header = ["application_number", "title", "institution", "status", "submitted_at", "created_at", "updated_at"]
+    elif report_type in {"compliance", "evidence"}:
+        statement = select(ApplicationEvidence, Application.application_number).join(
+            Application, Application.id == ApplicationEvidence.application_id
+        ).where(Application.id.in_(visible_app_ids))
+        if from_date:
+            statement = statement.where(func.date(ApplicationEvidence.created_at) >= from_date.isoformat())
+        if to_date:
+            statement = statement.where(func.date(ApplicationEvidence.created_at) <= to_date.isoformat())
+        evidence_rows = db.execute(statement.order_by(ApplicationEvidence.created_at.desc())).all()
+        if report_type == "evidence":
+            rows = [(number, e.title, e.category, e.reference_number, e.version, e.lifecycle_status,
+                     e.issued_on, e.expires_on, e.policy_key, e.created_at) for e, number in evidence_rows]
+            header = ["application_number", "evidence_title", "category", "reference_number", "version",
+                      "lifecycle_status", "issued_on", "expires_on", "policy_key", "created_at"]
+        else:
+            submissions = db.execute(
+                select(ComplianceSubmission, Application.application_number)
+                .join(Application, Application.id == ComplianceSubmission.application_id)
+                .where(Application.id.in_(visible_app_ids))
+            ).all()
+            if from_date:
+                submissions = [(s, n) for s, n in submissions if s.created_at.date() >= from_date]
+            if to_date:
+                submissions = [(s, n) for s, n in submissions if s.created_at.date() <= to_date]
+            rows = [(number, s.submission_type, s.title, s.status, s.version, s.submitted_at,
+                     s.reviewed_at, s.review_notes) for s, number in submissions]
+            header = ["application_number", "submission_type", "title", "status", "version",
+                      "submitted_at", "reviewed_at", "review_notes"]
+    elif report_type == "evc":
+        statement = select(EVCVisit, Application.application_number).join(
+            Application, Application.id == EVCVisit.application_id
+        ).where(Application.id.in_(visible_app_ids))
+        if from_date:
+            statement = statement.where(func.date(EVCVisit.scheduled_for) >= from_date.isoformat())
+        if to_date:
+            statement = statement.where(func.date(EVCVisit.scheduled_for) <= to_date.isoformat())
+        rows = [(number, v.scheduled_for, v.mode, v.location, v.status, v.report_status,
+                 v.report_submitted_at, v.outcome_summary, v.observations)
+                for v, number in db.execute(statement.order_by(EVCVisit.scheduled_for.desc())).all()]
+        header = ["application_number", "scheduled_for", "mode", "location", "visit_status",
+                  "report_status", "report_submitted_at", "outcome_summary", "observations"]
+    else:
+        statement = select(NotificationRecord, Application.application_number).join(
+            Application, Application.id == NotificationRecord.application_id
+        ).where(Application.id.in_(visible_app_ids))
+        if from_date:
+            statement = statement.where(func.date(NotificationRecord.created_at) >= from_date.isoformat())
+        if to_date:
+            statement = statement.where(func.date(NotificationRecord.created_at) <= to_date.isoformat())
+        rows = [(number, n.notification_type, n.title, n.severity, n.delivery_status, n.attempt_count,
+                 n.max_attempts, n.created_at, n.sent_at, n.last_error)
+                for n, number in db.execute(statement.order_by(NotificationRecord.created_at.desc())).all()]
+        header = ["application_number", "notification_type", "title", "severity", "delivery_status",
+                  "attempt_count", "max_attempts", "created_at", "sent_at", "last_error"]
+
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer)
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow([_csv_cell(value.isoformat() if hasattr(value, "isoformat") else value) for value in row])
+    filename = f"pravaah-{report_type}-report.csv"
+    return Response(
+        content="\\ufeff" + buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
     )
