@@ -174,6 +174,7 @@ function App() {
     Promise.all([
       api.complianceOverview().catch(() => null),
       api.operationsMetrics().catch(() => null),
+      api.pendencyAnalytics().catch(() => null),
       api.evcVisits().catch(() => [] as EVCVisit[]),
       Promise.all(applications.slice(0, 8).map(async application => {
         try {
@@ -183,10 +184,11 @@ function App() {
           return []
         }
       })),
-    ]).then(([overview, operationalMetrics, visits, eventGroups]) => {
+    ]).then(([overview, operationalMetrics, pendency, visits, eventGroups]) => {
       if (cancelled) return
       if (overview) setCompliance(overview)
       if (operationalMetrics) setOperationsMetrics(operationalMetrics)
+      if (pendency) setPendencyAnalytics(pendency)
       setEvcVisits(visits)
       setDashboardRecentEvents(eventGroups.flat().sort((a, b) => new Date(b.event.occurred_at).getTime() - new Date(a.event.occurred_at).getTime()).slice(0, 6))
     }).finally(() => {
