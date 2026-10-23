@@ -13,7 +13,7 @@ from app.api.v1.routes.applications import scoped_applications_statement
 from app.auth.dependencies import get_current_user
 from app.core.clock import utc_today
 from app.db.session import get_db
-from app.models.core import Application, User
+from app.models.core import Application, Institution, User
 from app.models.evc_visit import EVCVisit
 from app.models.evidence import ApplicationEvidence
 from app.models.escalation import ComplianceEscalation
