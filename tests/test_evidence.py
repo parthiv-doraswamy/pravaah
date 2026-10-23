@@ -178,6 +178,7 @@ def test_evidence_text_fields_are_trimmed_and_blank_values_rejected(api_client_a
 
 def test_evidence_renewal_creates_linked_version_and_preserves_prior_record(api_client_and_sessions):
     from datetime import date, timedelta
+    from uuid import UUID
 
     from app.models.evidence import ApplicationEvidence
     from app.models.workflow import ApplicationEvent
@@ -245,7 +246,7 @@ def test_evidence_renewal_creates_linked_version_and_preserves_prior_record(api_
         events = db.query(ApplicationEvent).filter_by(application_id=application_id).order_by(ApplicationEvent.sequence).all()
         assert [event.event_type for event in events] == ["evidence_registered", "evidence_renewed"]
         assert events[-1].event_metadata["prior_evidence_id"] == prior_id
-        original = db.get(ApplicationEvidence, prior_id)
+        original = db.get(ApplicationEvidence, UUID(prior_id))
         assert original is not None
         assert original.reference_number == "FSC-OLD"
         assert original.version == 1
