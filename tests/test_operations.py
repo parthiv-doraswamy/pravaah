@@ -263,3 +263,64 @@ def test_task_inbox_requires_authentication(api_client_and_sessions):
     client, _ = api_client_and_sessions
     response = client.get("/api/v1/operations/inbox")
     assert response.status_code == 401
+
+
+def test_reports_export_csv_is_scoped_and_supports_date_filters(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    with db_factory() as db:
+        own = Institution(name="Report College", code="RPT-OWN", region_code="RPT")
+        other = Institution(name="Hidden Report College", code="RPT-HIDDEN", region_code="OTHER")
+        db.add_all([own, other])
+        db.flush()
+        user = User(
+            email="reports-owner@example.test",
+            full_name="Reports Owner",
+            role="institution_user",
+            password_hash=hash_password("Test-password-123!"),
+            institution_id=own.id,
+        )
+        visible = Application(
+            application_number="PVH-REPORT-OWN",
+            title="Visible report case",
+            status="under_scrutiny",
+            institution_id=own.id,
+        )
+        hidden = Application(
+            application_number="PVH-REPORT-HIDDEN",
+            title="Hidden report case",
+            status="approved",
+            institution_id=other.id,
+        )
+        db.add_all([user, visible, hidden])
+        db.commit()
+        email = user.email
+
+    login = client.post("/api/v1/auth/login", json={"email": email, "password": "Test-password-123!"})
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = client.get("/api/v1/operations/reports/applications/export", headers=headers)
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert 'attachment; filename="pravaah-applications-report.csv"' in response.headers["content-disposition"]
+    assert "application_number,title,institution,status" in response.text
+    assert "PVH-REPORT-OWN" in response.text
+    assert "PVH-REPORT-HIDDEN" not in response.text
+
+    invalid_dates = client.get(
+        "/api/v1/operations/reports/applications/export?from_date=2026-10-24&to_date=2026-10-01",
+        headers=headers,
+    )
+    assert invalid_dates.status_code == 422
+
+
+def test_reports_export_requires_auth_and_rejects_unknown_report_type(api_client_and_sessions):
+    client, _ = api_client_and_sessions
+    assert client.get("/api/v1/operations/reports/applications/export").status_code == 401
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "institution@example.test", "password": "PravaahDemo2026!"},
+    )
+    # The isolated test database does not seed demo users; unauthenticated access remains denied.
+    assert login.status_code == 401
+    assert client.get("/api/v1/operations/reports/unknown/export").status_code == 401
