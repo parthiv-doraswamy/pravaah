@@ -46,6 +46,7 @@ class PolicyResponse(BaseModel):
     description: str
     effective_from: datetime
     rules: dict
+    rules_schema_version: int
     source_label: str
     is_active: bool
     created_at: datetime
