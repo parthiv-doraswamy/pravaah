@@ -94,7 +94,6 @@ def create_evidence(
     return evidence
 
 
-
 _ALLOWED_UPLOADS = {
     ".pdf": ("application/pdf", lambda data: data.startswith(b"%PDF-")),
     ".png": ("image/png", lambda data: data.startswith(b"\x89PNG\r\n\x1a\n")),
@@ -110,6 +109,15 @@ def _attachment_path(storage_key: str) -> Path:
     if root not in path.parents:
         raise HTTPException(status_code=500, detail="Invalid attachment storage reference")
     return path
+
+
+def _file_sha256(path: Path) -> str:
+    """Hash a stored attachment in bounded memory chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @router.get(
@@ -227,7 +235,7 @@ async def upload_evidence_attachment(
 
 @router.get(
     "/{application_id}/evidence/{evidence_id}/attachments/{attachment_id}/download",
-    summary="Download a private evidence attachment",
+    summary="Download a private evidence attachment after integrity verification",
 )
 def download_evidence_attachment(
     application_id: UUID,
@@ -247,6 +255,8 @@ def download_evidence_attachment(
     path = _attachment_path(attachment.storage_key)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Attachment file is unavailable")
+    if path.stat().st_size != attachment.size_bytes or _file_sha256(path) != attachment.sha256_hex:
+        raise HTTPException(status_code=409, detail="Attachment integrity verification failed; download blocked")
     return FileResponse(
         path=path,
         media_type=attachment.content_type,
