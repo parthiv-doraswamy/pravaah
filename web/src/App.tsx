@@ -54,6 +54,7 @@ function App() {
   const [attachmentsByEvidence, setAttachmentsByEvidence] = useState<Record<string, EvidenceAttachment[]>>({})
   const [uploadingEvidenceId, setUploadingEvidenceId] = useState<string | null>(null)
   const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null)
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null)
   const [loadingEvidence, setLoadingEvidence] = useState(false)
   const [evidenceTitle, setEvidenceTitle] = useState('')
   const [evidenceCategory, setEvidenceCategory] = useState('approval_letter')
@@ -487,6 +488,26 @@ function App() {
     }
   }
 
+  async function handlePreviewEvidenceImage(evidenceId: string, attachment: EvidenceAttachment) {
+    if (!selectedApplication) return
+    setDownloadingAttachmentId(attachment.id)
+    setNotice('')
+    try {
+      const blob = await api.downloadEvidenceAttachment(selectedApplication.id, evidenceId, attachment.id)
+      if (!blob.type.startsWith('image/')) throw new Error('This file cannot be previewed as an image.')
+      setPreviewImage({ url: URL.createObjectURL(blob), name: attachment.original_filename })
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not preview this image.')
+    } finally {
+      setDownloadingAttachmentId(null)
+    }
+  }
+
+  function closeImagePreview() {
+    if (previewImage) URL.revokeObjectURL(previewImage.url)
+    setPreviewImage(null)
+  }
+
   async function handleDownloadEvidenceFile(evidenceId: string, attachment: EvidenceAttachment) {
     if (!selectedApplication) return
     setDownloadingAttachmentId(attachment.id)
@@ -723,7 +744,7 @@ function App() {
                     {evidenceVisitReferences.some(visit => (visit.linked_evidence_ids || []).includes(item.id)) && <div className="evidence-report-references"><strong>Referenced by EVC reports</strong>{evidenceVisitReferences.filter(visit => (visit.linked_evidence_ids || []).includes(item.id)).map(visit => <span key={visit.id}>Visit {visit.id.slice(0, 8).toUpperCase()} · {visit.report_status.replaceAll('_', ' ')} · {visit.report_submitted_at ? 'Submitted ' + formatDate(visit.report_submitted_at) : 'Not submitted'}</span>)}</div>}
                     <div className="evidence-attachments">
                       <div className="evidence-attachments-heading"><strong><FileText size={13}/> Attached files</strong><span>{(attachmentsByEvidence[item.id] || []).length} file(s)</span></div>
-                      {(attachmentsByEvidence[item.id] || []).length === 0 ? <p className="evidence-attachments-empty">No files attached. PDF, PNG and JPEG files up to the configured limit are supported.</p> : <div className="evidence-attachment-list">{(attachmentsByEvidence[item.id] || []).map(attachment => <div className="evidence-attachment-row" key={attachment.id}><div><strong>{attachment.original_filename}</strong><span>{(attachment.size_bytes / 1024).toFixed(1)} KB · SHA-256 {attachment.sha256_hex.slice(0, 12)}…</span></div><button type="button" className="text-button" disabled={downloadingAttachmentId === attachment.id} onClick={() => void handleDownloadEvidenceFile(item.id, attachment)}>{downloadingAttachmentId === attachment.id ? 'Preparing…' : 'Download'}</button></div>)}</div>}
+                      {(attachmentsByEvidence[item.id] || []).length === 0 ? <p className="evidence-attachments-empty">No files attached. PDF, PNG and JPEG files up to the configured limit are supported.</p> : <div className="evidence-attachment-list">{(attachmentsByEvidence[item.id] || []).map(attachment => <div className="evidence-attachment-row" key={attachment.id}><div><strong>{attachment.original_filename}</strong><span>{(attachment.size_bytes / 1024).toFixed(1)} KB · SHA-256 {attachment.sha256_hex.slice(0, 12)}…</span></div><div className="evidence-attachment-actions">{/\.(png|jpe?g|webp|gif)$/i.test(attachment.original_filename) && <button type="button" className="text-button" disabled={downloadingAttachmentId === attachment.id} onClick={() => void handlePreviewEvidenceImage(item.id, attachment)}>{downloadingAttachmentId === attachment.id ? 'Opening…' : 'Preview'}</button>}<button type="button" className="text-button" disabled={downloadingAttachmentId === attachment.id} onClick={() => void handleDownloadEvidenceFile(item.id, attachment)}>{downloadingAttachmentId === attachment.id ? 'Preparing…' : 'Download'}</button></div></div>)}</div>}
                       {['institution_user', 'scrutiny_officer', 'regional_officer', 'bureau_officer', 'evc_coordinator', 'competent_authority', 'policy_admin', 'system_admin'].includes(user.role) && <label className="evidence-upload-control"><span>{uploadingEvidenceId === item.id ? 'Uploading and validating…' : 'Upload supporting file'}</span><input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={uploadingEvidenceId === item.id} onChange={event => { const file = event.currentTarget.files?.[0]; void handleUploadEvidenceFile(item.id, file); event.currentTarget.value = '' }}/></label>}
                     </div></div>
                   </article>
@@ -832,6 +853,7 @@ function App() {
         </div>
       </main>
 
+      {previewImage && <div className="modal-backdrop image-preview-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closeImagePreview() }}><section className="modal-card image-preview-card" role="dialog" aria-modal="true" aria-label={`Image preview: ${previewImage.name}`}><div className="modal-heading"><div><div className="eyebrow">EVIDENCE ATTACHMENT</div><h2>{previewImage.name}</h2><p>Private file preview</p></div><button type="button" className="icon-button" onClick={closeImagePreview} aria-label="Close image preview"><X size={18}/></button></div><img className="evidence-image-preview" src={previewImage.url} alt={previewImage.name}/><div className="modal-actions"><button type="button" className="secondary-button" onClick={closeImagePreview}>Close preview</button></div></section></div>}
       {createOpen && <div className="modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setCreateOpen(false)}}><form className="modal-card" onSubmit={handleCreate}><div className="modal-heading"><div><div className="eyebrow">APPLICATION INTAKE</div><h2>Create a draft application</h2><p>Start a new record for your institution.</p></div><button type="button" className="icon-button" onClick={()=>setCreateOpen(false)} aria-label="Close"><X size={18}/></button></div><label className="field-label" htmlFor="application-title">Application title</label><input className="text-input" id="application-title" value={newTitle} onChange={e=>setNewTitle(e.target.value)} minLength={3} maxLength={240} placeholder="e.g. New programme approval" required/><label className="field-label" htmlFor="application-summary">Short description <span className="optional">OPTIONAL</span></label><textarea className="text-input summary-input" id="application-summary" value={newSummary} onChange={e=>setNewSummary(e.target.value)} maxLength={5000} placeholder="Add context for your institution's internal tracking…"/><div className="modal-note"><LockKeyhole size={15}/> This creates a draft only. No statutory decision is made.</div>{notice&&!notice.toLowerCase().includes('success')&&<div className="inline-error">{notice}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={()=>setCreateOpen(false)}>Cancel</button><button className="primary-button" disabled={creating||newTitle.trim().length<3}>{creating?'Creating…':'Create draft'} <ArrowRight size={16}/></button></div></form></div>}
     </div>
   )
