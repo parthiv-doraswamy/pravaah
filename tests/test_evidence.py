@@ -173,3 +173,102 @@ def test_evidence_text_fields_are_trimmed_and_blank_values_rejected(api_client_a
         json={"title": "   ", "category": "other"},
     )
     assert invalid.status_code == 422
+
+
+
+def test_evidence_renewal_creates_linked_version_and_preserves_prior_record(api_client_and_sessions):
+    from datetime import date, timedelta
+
+    from app.models.evidence import ApplicationEvidence
+    from app.models.workflow import ApplicationEvent
+
+    client, session_factory = api_client_and_sessions
+    headers, application_id, _ = _login_and_case(client, session_factory, "009")
+    created = client.post(
+        f"/api/v1/applications/{application_id}/evidence",
+        headers=headers,
+        json={
+            "title": "Fire safety certificate",
+            "category": "fire_safety",
+            "reference_number": "FSC-OLD",
+            "issued_on": str(date.today() - timedelta(days=300)),
+            "expires_on": str(date.today() - timedelta(days=1)),
+            "policy_key": "EVIDENCE_EXPIRY",
+            "notes": "Original record remains historical evidence",
+        },
+    )
+    assert created.status_code == 201, created.text
+    prior_id = created.json()["id"]
+    assert created.json()["version"] == 1
+    assert created.json()["lifecycle_status"] == "current"
+
+    renewed = client.post(
+        f"/api/v1/applications/{application_id}/evidence/{prior_id}/renewals",
+        headers=headers,
+        json={
+            "title": "Fire safety certificate",
+            "category": "fire_safety",
+            "reference_number": "FSC-NEW",
+            "issued_on": str(date.today()),
+            "expires_on": str(date.today() + timedelta(days=365)),
+            "policy_key": "EVIDENCE_EXPIRY",
+            "notes": "Renewed certificate",
+        },
+    )
+    assert renewed.status_code == 201, renewed.text
+    payload = renewed.json()
+    assert payload["version"] == 2
+    assert payload["supersedes_evidence_id"] == prior_id
+    assert payload["lifecycle_status"] == "current"
+    assert payload["reference_number"] == "FSC-NEW"
+
+    listing = client.get(f"/api/v1/applications/{application_id}/evidence", headers=headers)
+    assert listing.status_code == 200
+    by_id = {item["id"]: item for item in listing.json()}
+    assert by_id[prior_id]["lifecycle_status"] == "replaced"
+    assert by_id[prior_id]["reference_number"] == "FSC-OLD"
+    assert by_id[payload["id"]]["version"] == 2
+
+    duplicate = client.post(
+        f"/api/v1/applications/{application_id}/evidence/{prior_id}/renewals",
+        headers=headers,
+        json={
+            "title": "Fire safety certificate",
+            "category": "fire_safety",
+            "issued_on": str(date.today()),
+            "expires_on": str(date.today() + timedelta(days=500)),
+        },
+    )
+    assert duplicate.status_code == 409
+
+    with session_factory() as db:
+        events = db.query(ApplicationEvent).filter_by(application_id=application_id).order_by(ApplicationEvent.sequence).all()
+        assert [event.event_type for event in events] == ["evidence_registered", "evidence_renewed"]
+        assert events[-1].event_metadata["prior_evidence_id"] == prior_id
+        original = db.get(ApplicationEvidence, prior_id)
+        assert original is not None
+        assert original.reference_number == "FSC-OLD"
+        assert original.version == 1
+
+
+def test_evidence_renewal_requires_future_expiry_date(api_client_and_sessions):
+    from datetime import date, timedelta
+
+    client, session_factory = api_client_and_sessions
+    headers, application_id, _ = _login_and_case(client, session_factory, "010")
+    created = client.post(
+        f"/api/v1/applications/{application_id}/evidence",
+        headers=headers,
+        json={"title": "Certificate", "category": "other"},
+    )
+    assert created.status_code == 201
+    response = client.post(
+        f"/api/v1/applications/{application_id}/evidence/{created.json()['id']}/renewals",
+        headers=headers,
+        json={
+            "title": "Certificate",
+            "category": "other",
+            "expires_on": str(date.today() - timedelta(days=1)),
+        },
+    )
+    assert response.status_code == 422
