@@ -194,3 +194,72 @@ def test_pendency_analytics_requires_authentication(api_client_and_sessions):
     client, _ = api_client_and_sessions
     response = client.get("/api/v1/operations/pendency")
     assert response.status_code == 401
+
+
+def test_task_inbox_combines_actionable_items_and_respects_institution_scope(api_client_and_sessions):
+    client, db_factory = api_client_and_sessions
+    today = datetime.now(UTC).date()
+    with db_factory() as db:
+        own = Institution(name="Inbox College", code="INBOX-OWN", region_code="INBOX")
+        other = Institution(name="Hidden Inbox College", code="INBOX-OTHER", region_code="OTHER")
+        db.add_all([own, other])
+        db.flush()
+        user = User(
+            email="inbox-owner@example.test",
+            full_name="Inbox Owner",
+            role="institution_user",
+            password_hash=hash_password("Test-password-123!"),
+            institution_id=own.id,
+        )
+        own_case = Application(
+            application_number="PVH-INBOX-OWN",
+            title="Inbox draft case",
+            status="draft",
+            institution_id=own.id,
+        )
+        hidden_case = Application(
+            application_number="PVH-INBOX-HIDDEN",
+            title="Hidden inbox case",
+            status="draft",
+            institution_id=other.id,
+        )
+        db.add_all([user, own_case, hidden_case])
+        db.flush()
+        db.add_all([
+            ApplicationEvidence(
+                application_id=own_case.id,
+                title="Fire safety certificate",
+                category="safety",
+                expires_on=today + timedelta(days=3),
+                created_by_user_id=user.id,
+            ),
+            ApplicationEvidence(
+                application_id=hidden_case.id,
+                title="Hidden expired certificate",
+                category="safety",
+                expires_on=today - timedelta(days=5),
+            ),
+        ])
+        db.commit()
+        email = user.email
+
+    login = client.post("/api/v1/auth/login", json={"email": email, "password": "Test-password-123!"})
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = client.get("/api/v1/operations/inbox", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    assert payload["by_priority"]["medium"] == 1
+    assert payload["by_priority"]["low"] == 1
+    assert {item["application_number"] for item in payload["items"]} == {"PVH-INBOX-OWN"}
+    evidence_task = next(item for item in payload["items"] if item["task_type"] == "evidence_expiry")
+    assert evidence_task["title"] == "Review evidence validity"
+    assert evidence_task["action_view"] == "compliance"
+    assert "Fire safety certificate" in evidence_task["description"]
+
+
+def test_task_inbox_requires_authentication(api_client_and_sessions):
+    client, _ = api_client_and_sessions
+    response = client.get("/api/v1/operations/inbox")
+    assert response.status_code == 401
