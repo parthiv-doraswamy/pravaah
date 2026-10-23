@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.routes.applications import scoped_applications_statement
 from app.auth.dependencies import get_current_user, require_roles
+from app.auth.permissions import COMPLIANCE_ESCALATION_RESOLVER_ROLES
 from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evidence import ApplicationEvidence
@@ -107,9 +108,7 @@ def list_escalations(
 def resolve_escalation(
     escalation_id: UUID,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles(
-        "scrutiny_officer", "regional_officer", "bureau_officer", "policy_admin", "system_admin", "evc_coordinator"
-    )),
+    user: User = Depends(require_roles(*COMPLIANCE_ESCALATION_RESOLVER_ROLES)),
 ) -> ComplianceEscalation:
     visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
     escalation = db.scalar(
