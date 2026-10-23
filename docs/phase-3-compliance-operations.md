@@ -19,5 +19,7 @@ This chunk introduces versioned compliance submission records tied to an applica
 - This is a configurable application workflow, not a statement of official AICTE requirements. Final approval/rejection remains a human action.
 
 ### Verification
+- Frontend detail view now lists submission versions and reviewer decisions, supports accepting/rejecting/requesting changes, and offers a correction form to institution users.
+- Frontend API client exposes list, create, review, and resubmit operations.
 
 Run `pytest tests/test_compliance_submissions.py` and `ruff check app tests`, then run the repository's full CI workflow before marking the chunk complete.

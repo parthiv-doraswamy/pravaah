@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EvidenceAttachment, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EvidenceAttachment, type ComplianceSubmission, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc'
 type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
@@ -50,6 +50,15 @@ function App() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null)
   const [caseEvents, setCaseEvents] = useState<ApplicationEvent[]>([])
   const [evidenceItems, setEvidenceItems] = useState<ApplicationEvidence[]>([])
+  const [submissions, setSubmissions] = useState<ComplianceSubmission[]>([])
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false)
+  const [submissionBusy, setSubmissionBusy] = useState(false)
+  const [undertakingType, setUndertakingType] = useState('annual_undertaking')
+  const [undertakingTitle, setUndertakingTitle] = useState('Annual compliance undertaking')
+  const [undertakingDeclaration, setUndertakingDeclaration] = useState('')
+  const [undertakingEvidenceIds, setUndertakingEvidenceIds] = useState<string[]>([])
+  const [reviewNotes, setReviewNotes] = useState('')
+  const [correctionForId, setCorrectionForId] = useState<string | null>(null)
   const [evidenceVisitReferences, setEvidenceVisitReferences] = useState<EVCVisit[]>([])
   const [attachmentsByEvidence, setAttachmentsByEvidence] = useState<Record<string, EvidenceAttachment[]>>({})
   const [uploadingEvidenceId, setUploadingEvidenceId] = useState<string | null>(null)
@@ -184,19 +193,20 @@ function App() {
     let cancelled = false
     setLoadingTimeline(true)
     setLoadingEvidence(true)
-    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id), api.evidence(selectedApplication.id), api.evcVisits({ applicationId: selectedApplication.id })])
-      .then(async ([events, verification, evidence, visits]) => {
+    setLoadingSubmissions(true)
+    Promise.all([api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id), api.evidence(selectedApplication.id), api.evcVisits({ applicationId: selectedApplication.id }), api.submissions(selectedApplication.id)])
+      .then(async ([events, verification, evidence, visits, submissionRecords]) => {
         const attachmentLists = await Promise.all(evidence.map(async item => ({
           id: item.id,
           files: await api.evidenceAttachments(selectedApplication.id, item.id),
         })))
         if (!cancelled) {
-          setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence); setEvidenceVisitReferences(visits)
+          setCaseEvents(events); setEventVerification(verification); setEvidenceItems(evidence); setEvidenceVisitReferences(visits); setSubmissions(submissionRecords)
           setAttachmentsByEvidence(Object.fromEntries(attachmentLists.map(item => [item.id, item.files])))
         }
       })
       .catch(error => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load the application timeline and evidence.') })
-      .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false) } })
+      .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false); setLoadingSubmissions(false) } })
     return () => { cancelled = true }
   }, [user, view, selectedApplication])
 
@@ -719,6 +729,18 @@ function App() {
               const targets = config && config.roles.includes(user.role) ? config.targets : []
               return <div className="detail-actions"><div><h3>Workflow actions</h3><p>Actions are limited by role and current status, and rechecked by the server.</p></div>{targets.length ? <><textarea value={transitionReason} onChange={event => setTransitionReason(event.target.value)} rows={2} maxLength={2000} placeholder="Optional note for the audit trail"/><div className="detail-action-buttons">{targets.map(target => <button key={target} className={target === 'rejected' || target === 'returned' ? 'secondary-button' : 'primary-button'} disabled={transitionBusy} onClick={() => void handleTransition(target)}>{transitionBusy ? 'Saving…' : target.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</button>)}</div></> : <p className="no-detail-actions">No action is available for your role in this status.</p>}</div>
             })()}
+            <div className="panel compliance-alerts" style={{ marginBottom: 24 }}>
+              <div className="panel-heading"><div><h2>Compliance undertakings</h2><p>Versioned submissions, reviewer decisions, and correction history</p></div><span className="evidence-count">{submissions.length} versions</span></div>
+              {loadingSubmissions ? <div className="table-state"><span>Loading submissions…</span></div> : submissions.length === 0 ? <div className="empty-state"><strong>No compliance undertakings submitted</strong><p>Choose supporting evidence below to create the first submission.</p></div> : <div className="compliance-alert-list">{submissions.map(item => <article className="compliance-alert-row" key={item.id}><div className="compliance-alert-main"><div className="compliance-alert-title"><strong>{item.title} · v{item.version}</strong><span className={'evidence-expiry ' + (item.status === 'accepted' ? 'valid' : item.status === 'rejected' ? 'expired' : item.status === 'changes_requested' ? 'expiring' : 'valid')}>{item.status.replaceAll('_', ' ')}</span></div><p>{item.submission_type.replaceAll('_', ' ')} · {item.evidence_ids.length} linked evidence item(s) · {item.submitted_at ? formatDate(item.submitted_at) : 'Not submitted'}</p><p>{item.declaration}</p>{item.review_notes && <span className="evidence-date">Reviewer note: {item.review_notes}</span>}{item.supersedes_submission_id && <span className="evidence-date">Corrects version {submissions.find(previous => previous.id === item.supersedes_submission_id)?.version ?? 'prior'}</span>}</div>{item.status === 'submitted' && ['scrutiny_officer', 'regional_officer', 'bureau_officer', 'competent_authority', 'policy_admin', 'system_admin'].includes(user.role) && <div className="detail-action-buttons"><button className="primary-button small-button" disabled={submissionBusy} onClick={() => void handleReviewUndertaking(item, 'accepted')}>Accept</button><button className="secondary-button small-button" disabled={submissionBusy || reviewNotes.trim().length < 3} onClick={() => void handleReviewUndertaking(item, 'changes_requested')}>Request changes</button><button className="secondary-button small-button" disabled={submissionBusy || reviewNotes.trim().length < 3} onClick={() => void handleReviewUndertaking(item, 'rejected')}>Reject</button></div>}{item.status === 'changes_requested' && user.role === 'institution_user' && <button className="primary-button small-button" onClick={() => handleStartCorrection(item)}>Correct and resubmit</button>}</article>)}</div>}
+              {['institution_user', 'scrutiny_officer', 'regional_officer', 'bureau_officer', 'evc_coordinator', 'competent_authority', 'policy_admin', 'system_admin'].includes(user.role) && <form className="evidence-form" onSubmit={handleSubmitUndertaking}>
+                <div className="evc-form-heading"><div><h3>{correctionForId ? 'Correct undertaking' : 'New undertaking'}</h3><p>Submit a declaration with evidence registered to this application. Reviewer decisions remain human-controlled.</p></div>{correctionForId && <button type="button" className="text-button" onClick={() => setCorrectionForId(null)}>Cancel correction</button>}</div>
+                <div className="evidence-form-grid"><label>Submission type<input value={undertakingType} onChange={event => setUndertakingType(event.target.value)} minLength={2} maxLength={80} required disabled={Boolean(correctionForId)}/></label><label>Title<input value={undertakingTitle} onChange={event => setUndertakingTitle(event.target.value)} minLength={3} maxLength={240} required/></label></div>
+                <label>Declaration<textarea value={undertakingDeclaration} onChange={event => setUndertakingDeclaration(event.target.value)} minLength={20} maxLength={10000} rows={3} required placeholder="Confirm the information provided is accurate and complete."/></label>
+                <div className="evc-report-evidence"><div className="evc-report-evidence-heading"><div><strong>Supporting evidence</strong><span>Select evidence registered to this application.</span></div><span className="evc-evidence-count">{undertakingEvidenceIds.length} selected</span></div>{evidenceItems.length === 0 ? <p className="evc-evidence-empty">Register evidence below before submitting an undertaking.</p> : <div className="evc-evidence-options">{evidenceItems.map(item => <label className="evc-evidence-option" key={item.id}><input type="checkbox" checked={undertakingEvidenceIds.includes(item.id)} onChange={event => setUndertakingEvidenceIds(ids => event.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))}/><span className="evc-evidence-option-main"><strong>{item.title}</strong><small>{item.category.replaceAll('_', ' ')}</small></span><span className="evc-evidence-date">{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'No expiry date'}</span></label>)}</div>}</div>
+                {['scrutiny_officer', 'regional_officer', 'bureau_officer', 'competent_authority', 'policy_admin', 'system_admin'].includes(user.role) && <label>Review notes<textarea value={reviewNotes} onChange={event => setReviewNotes(event.target.value)} rows={2} maxLength={3000} placeholder="Required when requesting changes or rejecting"/></label>}
+                <button className="primary-button" disabled={submissionBusy || !undertakingEvidenceIds.length || undertakingTitle.trim().length < 3 || undertakingDeclaration.trim().length < 20 || (correctionForId !== null && user.role !== 'institution_user')}>{submissionBusy ? 'Saving…' : correctionForId ? 'Submit corrected version' : 'Submit undertaking'}</button>
+              </form>}
+            </div>
             <div className="evidence-section">
               <div className="panel-heading"><div><h2>Evidence workspace</h2><p>Manage evidence metadata and private attachments, review expiry dates, and see EVC reports that reference each record.</p></div><span className="evidence-count">{evidenceItems.length} items</span></div>
               <form className="evidence-form" onSubmit={handleRegisterEvidence}>
