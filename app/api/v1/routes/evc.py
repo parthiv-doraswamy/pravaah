@@ -1,10 +1,12 @@
 """Role-controlled EVC visit scheduling and history."""
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.v1.routes.applications import scoped_applications_statement
@@ -16,6 +18,7 @@ from app.models.evidence import ApplicationEvidence
 from app.schemas.evc import EVCReportUpdate, EVCVisitCreate, EVCVisitResponse, EVCVisitStatusUpdate
 from app.services.workflow import append_event
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 _SCHEDULER_ROLES = ("evc_coordinator", "bureau_officer", "policy_admin", "system_admin")
 _ALLOWED_APPLICATION_STATUSES = {
@@ -30,16 +33,49 @@ def list_visits(
     status_filter: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> list[EVCVisit]:
-    visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
-    statement = select(EVCVisit).where(EVCVisit.application_id.in_(select(visible_ids.c.id)))
-    if application_id is not None:
-        statement = statement.where(EVCVisit.application_id == application_id)
-    if status_filter is not None:
-        if status_filter not in {"scheduled", "completed", "cancelled"}:
-            raise HTTPException(status_code=422, detail="Unsupported EVC visit status")
-        statement = statement.where(EVCVisit.status == status_filter)
-    return list(db.scalars(statement.order_by(EVCVisit.scheduled_for.asc()).limit(200)).all())
+) -> list[EVCVisitResponse]:
+    if status_filter is not None and status_filter not in {"scheduled", "completed", "cancelled"}:
+        raise HTTPException(status_code=422, detail="Unsupported EVC visit status")
+
+    try:
+        # Keep authorization scope in the database query; never fetch visits and
+        # filter them in Python, which could leak records across institution scopes.
+        visible_applications = (
+            scoped_applications_statement(user)
+            .with_only_columns(Application.id)
+            .order_by(None)
+            .subquery()
+        )
+        statement = select(EVCVisit).where(
+            EVCVisit.application_id.in_(select(visible_applications.c.id))
+        )
+        if application_id is not None:
+            statement = statement.where(EVCVisit.application_id == application_id)
+        if status_filter is not None:
+            statement = statement.where(EVCVisit.status == status_filter)
+
+        visits = db.scalars(
+            statement.order_by(EVCVisit.scheduled_for.asc(), EVCVisit.id.asc()).limit(200)
+        ).all()
+
+        # Validate while the request context is active so any malformed legacy
+        # JSON/UUID data is logged here rather than surfacing as an opaque
+        # FastAPI response-serialization 500.
+        return [EVCVisitResponse.model_validate(visit) for visit in visits]
+    except HTTPException:
+        raise
+    except (SQLAlchemyError, ValueError, TypeError) as exc:
+        logger.exception(
+            "EVC visit list failed (user_id=%s, role=%s, application_id=%s, status_filter=%s)",
+            getattr(user, "id", None),
+            getattr(user, "role", None),
+            application_id,
+            status_filter,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to load EVC visits. The server recorded diagnostic details.",
+        ) from exc
 
 
 @router.post(
@@ -137,7 +173,6 @@ def update_visit_status(
     db.commit()
     db.refresh(visit)
     return visit
-
 
 
 @router.put(
