@@ -62,7 +62,15 @@ class EVCVisitResponse(BaseModel):
     notes: str | None
     status: str
     checklist: list[dict[str, object]] | None
-    linked_evidence_ids: list[UUID] | None
+    linked_evidence_ids: list[str] | None
+
+    @field_validator("linked_evidence_ids", mode="before")
+    @classmethod
+    def normalize_legacy_evidence_ids(cls, value):
+        """Keep old JSON values readable instead of failing the entire visit listing."""
+        if value is None or not isinstance(value, list):
+            return None
+        return [str(item) for item in value if item is not None]
     outcome_summary: str | None
     observations: str | None
     report_status: str
