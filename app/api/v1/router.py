@@ -9,6 +9,7 @@ from app.api.v1.routes.evidence import router as evidence_router
 from app.api.v1.routes.evc import router as evc_router
 from app.api.v1.routes.notifications import router as notifications_router
 from app.api.v1.routes.operations import router as operations_router
+from app.api.v1.routes.pendency import router as pendency_router
 from app.api.v1.routes.submissions import router as submissions_router
 from app.api.v1.routes.workflow import router as workflow_router
 
@@ -22,5 +23,4 @@ api_router.include_router(submissions_router, prefix="/compliance", tags=["compl
 api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(evc_router, prefix="/evc", tags=["EVC scheduling"])
 api_router.include_router(operations_router, prefix="/operations", tags=["operations intelligence"])
-from app.api.v1.routes.pendency import router as pendency_router
 api_router.include_router(pendency_router, prefix="/operations/pendency", tags=["operations intelligence"])
