@@ -614,7 +614,7 @@ function App() {
       {mobileNav && <button className="mobile-backdrop" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
       <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
         <div className="sidebar-brand"><div className="brand-mark"><Activity size={22} /></div><div><strong>PRAVAAH</strong><span>APPROVAL INTELLIGENCE</span></div><button className="mobile-close icon-button" onClick={() => setMobileNav(false)} aria-label="Close menu"><X size={18} /></button></div>
-        <div className="workspace-select"><div className="workspace-avatar">{initials(user.full_name)}</div><div className="workspace-meta"><strong>{user.role === 'institution_user' ? 'Institution workspace' : 'Review workspace'}</strong><span>{roleLabel}</span></div><ChevronDown size={15} /></div>
+        <button type="button" className="workspace-select" onClick={() => { setView('overview'); setMobileNav(false); setNotice('Workspace overview opened. Use the profile control at the top right to sign out.') }} title="Open workspace overview" aria-label="Open workspace overview"><div className="workspace-avatar">{initials(user.full_name)}</div><div className="workspace-meta"><strong>{user.role === 'institution_user' ? 'Institution workspace' : 'Review workspace'}</strong><span>{roleLabel}</span></div><ChevronDown size={15} /></button>
         <div className="nav-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Main navigation">
           {navItems.map(item => <button key={item.id} className={`nav-item ${view === item.id ? 'active' : ''}`} onClick={() => { setView(item.id); setMobileNav(false) }}><item.icon size={18} /><span>{item.label}</span>{item.id === 'applications' && <span className="nav-count">{total}</span>}</button>)}
@@ -622,7 +622,7 @@ function App() {
         <div className="nav-label nav-label-spaced">OPERATIONS</div>
         
         <button className={'nav-item ' + (view === 'policies' ? 'active' : '')} onClick={() => { setView('policies'); setMobileNav(false) }}><BookOpenCheck size={18} /><span>Policy registry</span></button>
-        <div className="nav-item nav-disabled"><FileCheck2 size={18} /><span>Evidence & documents</span><span className="soon-dot" /></div>
+        <button type="button" className={`nav-item ${view === 'detail' ? 'active' : ''}`} onClick={() => { setView('applications'); setMobileNav(false); setNotice('Open an application to view and manage its evidence and document attachments.') }} title="Find evidence in application records"><FileCheck2 size={18} /><span>Evidence & documents</span><ArrowRight size={14} className="nav-action-icon" /></button>
         <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><CircleHelp size={18} /></div><strong>Need a hand?</strong><p>Explore the workflow guide as modules become available.</p><span>Prototype workspace</span></div><div className="sidebar-foot"><span className="online-dot" /> API-connected workspace <span className="version">v0.1</span></div></div>
       </aside>
 
