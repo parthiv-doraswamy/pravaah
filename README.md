@@ -80,7 +80,7 @@ Start the frontend, API, and PostgreSQL database with Docker Compose:
 docker compose up --build
 ```
 
-Open the PRAVAAH frontend at `http://localhost:5173` and the API documentation at `http://localhost:8000/docs`. Local synthetic demo accounts are seeded on startup: `demo.institution@example.test` and `demo.reviewer@example.test`, both using the local-only password `ChangeMe-LocalOnly-123!`. These credentials are for the Compose development environment only and must never be reused in a deployed environment. For test and migration details, see [`docs/backend-development.md`](docs/backend-development.md). This command has been configured in the repository but has not yet been executed in this session.
+Open the PRAVAAH frontend at `http://localhost:5173` and the API documentation at `http://localhost:8000/docs`. Local synthetic demo accounts are seeded on startup: `demo.institution@example.test` and `demo.reviewer@example.test`, both using the local-only password `ChangeMe-LocalOnly-123!`. These credentials are for the Compose development environment only and must never be reused in a deployed environment. For test and migration details, see [`docs/backend-development.md`](docs/backend-development.md). The [operations runbook](docs/operations-runbook.md) covers startup checks, restart behavior, backups, and recovery precautions. This command has been configured in the repository but has not yet been executed in this session.
 
 ## Disclaimer
 
