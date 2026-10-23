@@ -80,6 +80,7 @@ function App() {
   const [transitionBusy, setTransitionBusy] = useState(false)
   const [compliance, setCompliance] = useState<ComplianceOverview | null>(null)
   const [operationsMetrics, setOperationsMetrics] = useState<OperationsMetrics | null>(null)
+  const [pendencyAnalytics, setPendencyAnalytics] = useState<import('./api').PendencyAnalytics | null>(null)
   const [loadingCompliance, setLoadingCompliance] = useState(false)
   const [escalations, setEscalations] = useState<ComplianceEscalation[]>([])
   const [loadingEscalations, setLoadingEscalations] = useState(false)
