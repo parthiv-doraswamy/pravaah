@@ -1,5 +1,7 @@
 """Role-scoped operational metrics for the workspace dashboard."""
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -57,17 +59,6 @@ def operations_metrics(
         select(func.count(ApplicationEvidence.id))
         .where(ApplicationEvidence.application_id.in_(visible_app_ids), ApplicationEvidence.expires_on < today)
     ) or 0
-    due_evidence = db.scalar(
-        select(func.count(ApplicationEvidence.id))
-        .where(
-            ApplicationEvidence.application_id.in_(visible_app_ids),
-            ApplicationEvidence.expires_on >= today,
-            ApplicationEvidence.expires_on <= today.replace(day=today.day) ,
-        )
-    ) or 0
-    # Use a date arithmetic window that also handles month/year boundaries.
-    from datetime import timedelta
-
     due_evidence = db.scalar(
         select(func.count(ApplicationEvidence.id)).where(
             ApplicationEvidence.application_id.in_(visible_app_ids),
