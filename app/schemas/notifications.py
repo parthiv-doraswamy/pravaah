@@ -37,6 +37,7 @@ class NotificationQueueResult(BaseModel):
 class NotificationOperationsItem(BaseModel):
     id: UUID
     application_id: UUID
+    evidence_id: UUID | None
     application_number: str
     application_title: str
     recipient_name: str
