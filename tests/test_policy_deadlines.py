@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.api.v1.routes.workflow import activate_policy_version, create_policy_version
 from app.models.core import Application, Institution, User
 from app.models.evidence import ApplicationEvidence
+from app.models.evc_visit import EVCVisit
 from app.models.notification import NotificationRecord
 from app.models.workflow import ApplicationEvent
 from app.schemas.workflow import PolicyCreate
@@ -144,3 +145,53 @@ def test_evidence_expiry_policy_controls_reminder_windows_and_escalation(api_cli
         assert not any(
             item.title.startswith("Evidence expires in 5 days") for item in records
         )
+
+
+
+def test_evc_report_deadline_uses_completed_visit_and_stops_after_submission(api_client_and_sessions):
+    _, session_factory = api_client_and_sessions
+    with session_factory() as db:
+        users, application = _setup(db, "003")
+        application.status = "under_scrutiny"
+        visit = EVCVisit(
+            application_id=application.id,
+            scheduled_for=datetime.now(UTC) - timedelta(days=1),
+            mode="online",
+            status="completed",
+            report_status="not_started",
+            created_by_user_id=users["evc_coordinator"].id,
+        )
+        db.add(visit)
+        db.flush()
+        _create_policy(db, users["policy_admin"], "003", [
+            {
+                "event": "evc_report_due",
+                "deadline_days": 1,
+                "reminder_days_before": [1],
+                "escalation_days_after": 1,
+            }
+        ])
+        append_event(
+            db, application_id=application.id, event_type="evc_visit_status_changed",
+            from_status="scheduled", to_status="completed", actor_user_id=users["evc_coordinator"].id,
+            metadata={"visit_id": str(visit.id)},
+        )
+        db.commit()
+        event = db.scalar(select(ApplicationEvent).where(
+            ApplicationEvent.application_id == application.id,
+            ApplicationEvent.event_type == "evc_visit_status_changed",
+        ))
+        run_at = event.occurred_at.replace(tzinfo=UTC) + timedelta(minutes=1)
+        first = run_policy_deadline_monitoring(db, now=run_at)
+        assert first["notifications_queued"] == 2
+
+        overdue = run_at + timedelta(days=3)
+        second = run_policy_deadline_monitoring(db, now=overdue)
+        assert second["escalations_notified"] == 2
+
+        visit.report_status = "submitted"
+        visit.report_submitted_at = overdue
+        db.commit()
+        after_submission = run_policy_deadline_monitoring(db, now=overdue + timedelta(days=1))
+        assert after_submission["notifications_queued"] == 0
+        assert after_submission["escalations_notified"] == 0
