@@ -111,10 +111,12 @@ def update_visit_status(
 ) -> EVCVisit:
     visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
     visit = db.scalar(
-        select(EVCVisit).where(
+        select(EVCVisit)
+        .where(
             EVCVisit.id == visit_id,
             EVCVisit.application_id.in_(select(visible_ids.c.id)),
         )
+        .with_for_update()
     )
     if visit is None:
         raise HTTPException(status_code=404, detail="EVC visit not found")
@@ -151,10 +153,12 @@ def save_visit_report(
 ) -> EVCVisit:
     visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
     visit = db.scalar(
-        select(EVCVisit).where(
+        select(EVCVisit)
+        .where(
             EVCVisit.id == visit_id,
             EVCVisit.application_id.in_(select(visible_ids.c.id)),
         )
+        .with_for_update()
     )
     if visit is None:
         raise HTTPException(status_code=404, detail="EVC visit not found")
