@@ -545,15 +545,31 @@ function App() {
           <div className="mobile-brand"><div className="brand-mark"><Activity size={22} /></div><strong>PRAVAAH</strong></div>
           <div className="eyebrow">WELCOME BACK</div>
           <h2>Sign in to your workspace</h2>
-          <p className="muted login-description">Use your assigned demo account to continue.</p>
+          <p className="muted login-description">Choose a demo role to fill its account, or enter credentials manually.</p>
+          <div className="demo-role-picker" aria-label="Choose a demo role">
+            {[
+              { label: 'Institution', email: 'demo.institution@example.test' },
+              { label: 'Scrutiny Officer', email: 'demo.reviewer@example.test' },
+              { label: 'Regional Officer', email: 'demo.regional@example.test' },
+              { label: 'Bureau Officer', email: 'demo.bureau@example.test' },
+              { label: 'EVC Coordinator', email: 'demo.evc@example.test' },
+              { label: 'Competent Authority', email: 'demo.authority@example.test' },
+              { label: 'Policy Admin', email: 'demo.policyadmin@example.test' },
+              { label: 'System Admin', email: 'demo.admin@example.test' },
+            ].map(account => (
+              <button key={account.email} type="button" className={loginEmail === account.email ? 'demo-role-button selected' : 'demo-role-button'} onClick={() => { setLoginEmail(account.email); setLoginPassword('PravaahDemo2026!'); setLoginError('') }}>
+                {account.label}
+              </button>
+            ))}
+          </div>
           <label className="field-label" htmlFor="email">Email address</label>
           <div className="input-wrap"><Users size={17} /><input id="email" type="email" autoComplete="username" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required /></div>
           <label className="field-label" htmlFor="password">Password</label>
-          <div className="input-wrap"><LockKeyhole size={17} /><input id="password" type="password" autoComplete="current-password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Enter your password" required /></div>
+          <div className="input-wrap"><LockKeyhole size={17} /><input id="password" type="password" autoComplete="current-password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Choose a demo role above" required /></div>
           {loginError && <div className="inline-error" role="alert">{loginError}</div>}
           <button className="primary-button login-submit" disabled={loggingIn}>{loggingIn ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} /></button>
-          <div className="login-security"><LockKeyhole size={14} /><span>Secure session · Role-based access</span></div>
-          <div className="demo-hint">Local demo credentials are documented in the repository README. The demo password is only for local development.</div>
+          <div className="login-security"><LockKeyhole size={14} /><span>Demo session · Role-based access</span></div>
+          <div className="demo-hint">Public synthetic demo accounts only. Never use these accounts for real or confidential data. Password: <strong>PravaahDemo2026!</strong></div>
         </form>
         <div className="login-bottom">© 2026 PRAVAAH <span>·</span> Transparent by design</div>
       </section>
