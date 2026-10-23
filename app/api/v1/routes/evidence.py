@@ -1,6 +1,7 @@
 """Evidence metadata registration and expiry tracking for scoped applications."""
 
 import hashlib
+from datetime import date
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -92,6 +93,80 @@ def create_evidence(
     db.commit()
     db.refresh(evidence)
     return evidence
+
+
+@router.post(
+    "/{application_id}/evidence/{evidence_id}/renewals",
+    response_model=EvidenceResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new evidence version as a renewal",
+)
+def renew_evidence(
+    application_id: UUID,
+    evidence_id: UUID,
+    payload: EvidenceCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ApplicationEvidence:
+    if user.role not in EVIDENCE_WRITE_ROLES:
+        raise HTTPException(status_code=403, detail="Your role cannot renew evidence")
+    application = _visible_application(db, user, application_id)
+    if application.status in {"approved", "rejected"}:
+        raise HTTPException(status_code=409, detail="Evidence cannot be renewed after the application is finalized")
+    prior = db.scalar(
+        select(ApplicationEvidence)
+        .where(
+            ApplicationEvidence.id == evidence_id,
+            ApplicationEvidence.application_id == application_id,
+        )
+        .with_for_update()
+    )
+    if prior is None:
+        raise HTTPException(status_code=404, detail="Evidence record not found")
+    if prior.lifecycle_status != "current":
+        raise HTTPException(status_code=409, detail="Only the current evidence version can be renewed")
+    if payload.expires_on is None:
+        raise HTTPException(status_code=422, detail="A renewal must include the new expiry date")
+    if payload.expires_on < date.today():
+        raise HTTPException(status_code=422, detail="Renewal expiry date must be today or in the future")
+    if payload.issued_on and payload.expires_on < payload.issued_on:
+        raise HTTPException(status_code=422, detail="Expiry date cannot be earlier than issue date")
+
+    prior.lifecycle_status = "replaced"
+    renewed = ApplicationEvidence(
+        application_id=application_id,
+        title=payload.title,
+        category=payload.category,
+        reference_number=payload.reference_number,
+        issued_on=payload.issued_on,
+        expires_on=payload.expires_on,
+        policy_key=payload.policy_key,
+        notes=payload.notes,
+        created_by_user_id=user.id,
+        version=prior.version + 1,
+        supersedes_evidence_id=prior.id,
+        lifecycle_status="current",
+    )
+    db.add(renewed)
+    db.flush()
+    append_event(
+        db,
+        application_id=application_id,
+        event_type="evidence_renewed",
+        from_status=prior.lifecycle_status,
+        to_status=renewed.lifecycle_status,
+        actor_user_id=user.id,
+        reason="New evidence version created; prior record retained",
+        metadata={
+            "prior_evidence_id": str(prior.id),
+            "renewed_evidence_id": str(renewed.id),
+            "version": renewed.version,
+            "expires_on": renewed.expires_on.isoformat(),
+        },
+    )
+    db.commit()
+    db.refresh(renewed)
+    return renewed
 
 
 _ALLOWED_UPLOADS = {
