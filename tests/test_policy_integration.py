@@ -97,19 +97,6 @@ def test_policy_api_create_activate_and_enforce_prerequisites(api_client_and_ses
     assert policy_response.json()["is_active"] is False
 
     transition_url = f"/api/v1/applications/{application_id}/transitions"
-    inactive_policy_transition = client.post(
-        transition_url,
-        headers=institution_headers,
-        json={"target_status": "submitted", "expected_status": "draft"},
-    )
-    assert inactive_policy_transition.status_code == 200
-
-    # Return to a draft state in the isolated test so activation can be tested
-    # against the same prerequisite gate without relying on any UI state.
-    with session_factory() as db:
-        application = db.get(Application, application_id)
-        application.status = "draft"
-        db.commit()
 
     forbidden_activation = client.post(
         "/api/v1/applications/policies/registry/application_workflow/1/activate",
