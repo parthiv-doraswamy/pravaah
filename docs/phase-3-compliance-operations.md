@@ -23,3 +23,17 @@ This chunk introduces versioned compliance submission records tied to an applica
 - Frontend API client exposes list, create, review, and resubmit operations.
 
 Run `pytest tests/test_compliance_submissions.py` and `ruff check app tests`, then run the repository's full CI workflow before marking the chunk complete.
+
+
+## Chunk 3: EVC eligibility, scheduling, and report lifecycle
+
+- Added a scoped eligibility endpoint: `GET /api/v1/evc/applications/{application_id}/eligibility`.
+- Eligibility reports whether the application is in an allowed active-review status and whether an existing scheduled visit blocks another booking.
+- Scheduling rechecks the same server-side rules under an application row lock; a second active scheduled visit is rejected with HTTP 409.
+- The scheduling UI checks eligibility before enabling confirmation and explains blocking reasons.
+- Existing report lifecycle remains: reports can be saved as drafts only after visit completion; submitted reports are locked, checklist sections are validated, linked evidence must belong to the same application, and report changes are audit-recorded.
+- Eligibility rules are application workflow configuration, not official AICTE policy. EVC scheduling and reports do not themselves approve or reject an application.
+
+### Verification
+- Added integration coverage for eligibility state, active-visit conflicts, and duplicate-schedule rejection.
+- Run `pytest tests/test_evc.py`, `ruff check app tests`, frontend production build, and the full CI suite.
