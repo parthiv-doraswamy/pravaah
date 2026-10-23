@@ -1,10 +1,14 @@
 """Regression tests for detecting corrupted evidence attachments at download time."""
 
 from pathlib import Path
+from uuid import UUID
+
+from sqlalchemy import select
 
 from app.auth.security import hash_password
 from app.core.config import Settings
 from app.models.core import Application, Institution, User
+from app.models.evidence_attachment import EvidenceAttachment
 import app.api.v1.routes.evidence as evidence_routes
 
 
@@ -60,7 +64,14 @@ def test_download_blocks_attachment_when_stored_bytes_change(api_client_and_sess
     )
     assert uploaded.status_code == 201, uploaded.text
     attachment = uploaded.json()
-    storage_path = tmp_path / attachment["storage_key"][:2] / attachment["storage_key"]
+    # The API intentionally omits private storage keys from its response schema.
+    with session_factory() as db:
+        stored_attachment = db.scalar(
+            select(EvidenceAttachment).where(EvidenceAttachment.id == UUID(attachment["id"]))
+        )
+        assert stored_attachment is not None
+        storage_key = stored_attachment.storage_key
+    storage_path = tmp_path / storage_key[:2] / storage_key
     assert storage_path.is_file()
 
     # Simulate disk corruption after upload; metadata still contains the original hash and size.
