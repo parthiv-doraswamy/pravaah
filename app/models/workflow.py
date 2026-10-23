@@ -28,6 +28,7 @@ class PolicyVersion(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     rules: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    rules_schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     source_label: Mapped[str] = mapped_column(String(240), nullable=False, default="PRAVAAH synthetic demo policy")
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

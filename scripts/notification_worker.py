@@ -8,7 +8,7 @@ import time
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import get_session_factory
-from app.services.notification_jobs import run_expiry_monitoring
+from app.services.notification_jobs import run_expiry_monitoring, run_policy_deadline_monitoring
 from app.services.notification_delivery import process_due_notifications
 
 logging.basicConfig(
@@ -23,19 +23,21 @@ def run_once() -> dict[str, object]:
     with session_factory() as db:
         scan = run_expiry_monitoring(db)
     with session_factory() as db:
+        deadlines = run_policy_deadline_monitoring(db)
+    with session_factory() as db:
         delivery = process_due_notifications(db)
-    return {"expiry_scan": scan, "delivery": delivery}
+    return {"expiry_scan": scan, "policy_deadlines": deadlines, "delivery": delivery}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="PRAVAAH expiry notification and escalation worker")
+    parser = argparse.ArgumentParser(description="PRAVAAH policy deadline, expiry notification, and escalation worker")
     parser.add_argument("--once", action="store_true", help="Run a single scan and exit")
     args = parser.parse_args()
     interval = max(30, int(os.getenv("NOTIFICATION_WORKER_INTERVAL_SECONDS", "300")))
 
     while True:
         try:
-            logger.info("Expiry monitoring result: %s", run_once())
+            logger.info("Deadline and expiry monitoring result: %s", run_once())
         except (SQLAlchemyError, OSError, RuntimeError) as error:
             # Exception messages can contain DSNs or provider details. Log the
             # category without echoing the raw message or traceback.
