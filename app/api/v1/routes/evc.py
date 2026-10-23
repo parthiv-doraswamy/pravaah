@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.routes.applications import scoped_applications_statement
 from app.auth.dependencies import get_current_user, require_roles
+from app.auth.permissions import EVC_SCHEDULER_ROLES
 from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evc_visit import EVCVisit
@@ -20,7 +21,6 @@ from app.services.workflow import append_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-_SCHEDULER_ROLES = ("evc_coordinator", "bureau_officer", "policy_admin", "system_admin")
 _ALLOWED_APPLICATION_STATUSES = {
     "submitted", "under_scrutiny", "recommended_for_approval",
     "pending_authority_decision", "evc_pending", "evc_scheduled",
@@ -87,7 +87,7 @@ def list_visits(
 def schedule_visit(
     payload: EVCVisitCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles(*_SCHEDULER_ROLES)),
+    user: User = Depends(require_roles(*EVC_SCHEDULER_ROLES)),
 ) -> EVCVisit:
     application = db.scalar(
         scoped_applications_statement(user).where(Application.id == payload.application_id)
@@ -143,7 +143,7 @@ def update_visit_status(
     visit_id: UUID,
     payload: EVCVisitStatusUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles(*_SCHEDULER_ROLES)),
+    user: User = Depends(require_roles(*EVC_SCHEDULER_ROLES)),
 ) -> EVCVisit:
     visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
     visit = db.scalar(
@@ -184,7 +184,7 @@ def save_visit_report(
     visit_id: UUID,
     payload: EVCReportUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles(*_SCHEDULER_ROLES)),
+    user: User = Depends(require_roles(*EVC_SCHEDULER_ROLES)),
 ) -> EVCVisit:
     visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
     visit = db.scalar(

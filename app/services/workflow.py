@@ -67,8 +67,6 @@ def append_event(
         previous_hash=previous_hash, event_hash=canonical_event_hash(payload),
     )
     db.add(event)
-    # Flush before returning so a second append in the same transaction sees this
-    # event as the current chain head and receives the next sequence number.
     db.flush()
     return event
 
@@ -109,9 +107,12 @@ def transition_application(
 
 
 def verify_event_chain(events: list[ApplicationEvent]) -> tuple[bool, int | None]:
-    """Verify event sequence, previous links, and content hashes."""
+    """Verify event sequence, a single application scope, previous links, and hashes."""
     previous_hash = ZERO_HASH
+    chain_application_id = events[0].application_id if events else None
     for expected_sequence, event in enumerate(events, start=1):
+        if event.application_id != chain_application_id:
+            return False, event.sequence
         occurred_at = event.occurred_at
         if occurred_at.tzinfo is None:
             occurred_at = occurred_at.replace(tzinfo=UTC)

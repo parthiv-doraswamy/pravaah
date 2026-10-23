@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.routes.applications import scoped_applications_statement
 from app.auth.dependencies import get_current_user
+from app.auth.permissions import EVIDENCE_WRITE_ROLES
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.core import Application, User
@@ -20,10 +21,6 @@ from app.schemas.evidence import EvidenceAttachmentResponse, EvidenceCreate, Evi
 from app.services.workflow import append_event
 
 router = APIRouter()
-_EVIDENCE_WRITE_ROLES = {
-    "institution_user", "scrutiny_officer", "regional_officer", "bureau_officer",
-    "evc_coordinator", "competent_authority", "policy_admin", "system_admin",
-}
 
 
 def _visible_application(db: Session, user: User, application_id: UUID) -> Application:
@@ -59,7 +56,7 @@ def create_evidence(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ApplicationEvidence:
-    if user.role not in _EVIDENCE_WRITE_ROLES:
+    if user.role not in EVIDENCE_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="Your role cannot register evidence")
     application = _visible_application(db, user, application_id)
     if payload.issued_on and payload.expires_on and payload.expires_on < payload.issued_on:
@@ -97,7 +94,6 @@ def create_evidence(
     return evidence
 
 
-
 _ALLOWED_UPLOADS = {
     ".pdf": ("application/pdf", lambda data: data.startswith(b"%PDF-")),
     ".png": ("image/png", lambda data: data.startswith(b"\x89PNG\r\n\x1a\n")),
@@ -113,6 +109,15 @@ def _attachment_path(storage_key: str) -> Path:
     if root not in path.parents:
         raise HTTPException(status_code=500, detail="Invalid attachment storage reference")
     return path
+
+
+def _file_sha256(path: Path) -> str:
+    """Hash a stored attachment in bounded memory chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @router.get(
@@ -153,7 +158,7 @@ async def upload_evidence_attachment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> EvidenceAttachment:
-    if user.role not in _EVIDENCE_WRITE_ROLES:
+    if user.role not in EVIDENCE_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="Your role cannot upload evidence files")
     application = _visible_application(db, user, application_id)
     if application.status in {"approved", "rejected"}:
@@ -230,7 +235,7 @@ async def upload_evidence_attachment(
 
 @router.get(
     "/{application_id}/evidence/{evidence_id}/attachments/{attachment_id}/download",
-    summary="Download a private evidence attachment",
+    summary="Download a private evidence attachment after integrity verification",
 )
 def download_evidence_attachment(
     application_id: UUID,
@@ -250,6 +255,8 @@ def download_evidence_attachment(
     path = _attachment_path(attachment.storage_key)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Attachment file is unavailable")
+    if path.stat().st_size != attachment.size_bytes or _file_sha256(path) != attachment.sha256_hex:
+        raise HTTPException(status_code=409, detail="Attachment integrity verification failed; download blocked")
     return FileResponse(
         path=path,
         media_type=attachment.content_type,

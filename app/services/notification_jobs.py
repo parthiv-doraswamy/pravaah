@@ -1,6 +1,6 @@
 """Scheduled, idempotent expiry notification and escalation jobs."""
 
-from datetime import UTC, date, datetime
+from datetime import date
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
+from app.core.clock import utc_now, utc_today
 from app.models.core import Application, User
 from app.models.evidence import ApplicationEvidence
 from app.models.escalation import ComplianceEscalation
@@ -34,6 +35,7 @@ def _insert_if_absent(db: Session, model, values: dict) -> bool:
 
 
 def expiry_severity(expires_on: date, today: date) -> tuple[str, int] | None:
+    """Classify an expiry date using the shared, explicitly supplied calendar date."""
     days = (expires_on - today).days
     if days < 0:
         return "expired", days
@@ -48,8 +50,8 @@ def expiry_severity(expires_on: date, today: date) -> tuple[str, int] | None:
 
 def run_expiry_monitoring(db: Session, today: date | None = None) -> dict[str, int | str]:
     """Queue deduplicated in-app reminders and open escalations for long-expired evidence."""
-    run_date = today or datetime.now(UTC).date()
-    now = datetime.now(UTC)
+    now = utc_now()
+    run_date = today if today is not None else utc_today(now)
     rows = db.execute(
         select(ApplicationEvidence, Application, User)
         .join(Application, Application.id == ApplicationEvidence.application_id)

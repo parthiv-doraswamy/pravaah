@@ -8,22 +8,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
+from app.auth.permissions import GLOBAL_APPLICATION_REVIEW_ROLES
 from app.db.session import get_db
 from app.models.core import Application, Institution, User
 from app.schemas.applications import ApplicationCreate, ApplicationPage, ApplicationResponse
 from app.services.workflow import append_event
 
 router = APIRouter()
-_REVIEW_ROLES = {
-    "scrutiny_officer",
-    "regional_officer",
-    "bureau_officer",
-    "evc_coordinator",
-    "competent_authority",
-    "policy_admin",
-    "auditor",
-    "system_admin",
-}
 
 
 def scoped_applications_statement(user: User):
@@ -37,7 +28,7 @@ def scoped_applications_statement(user: User):
         if user.institution is None or not user.institution.region_code:
             raise HTTPException(status_code=403, detail="No region is assigned to this account")
         return statement.join(Institution).where(Institution.region_code == user.institution.region_code)
-    if user.role in _REVIEW_ROLES:
+    if user.role in GLOBAL_APPLICATION_REVIEW_ROLES:
         return statement
     raise HTTPException(status_code=403, detail="Your role cannot access the application registry")
 
