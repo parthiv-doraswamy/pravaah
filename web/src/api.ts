@@ -281,6 +281,7 @@ export const api = {
   resolveEscalation: (id: string) => request<ComplianceEscalation>(`/compliance/escalations/${encodeURIComponent(id)}/resolve`, { method: 'POST' }),
   notifications: (unreadOnly = false) => request<NotificationRecord[]>(`/notifications?unread_only=${unreadOnly}&limit=50`),
   markNotificationRead: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+  retryNotification: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
