@@ -19,3 +19,34 @@ class OperationsMetrics(BaseModel):
     open_escalations: int = Field(ge=0)
     failed_notifications: int = Field(ge=0)
     evc_reports_pending: int = Field(ge=0)
+
+
+class PendencyItem(BaseModel):
+    """A visible application currently waiting for workflow action."""
+
+    application_id: str
+    application_number: str
+    title: str
+    status: str
+    institution_name: str
+    waiting_since: date
+    days_waiting: int = Field(ge=0)
+
+
+class PendencyStatusSummary(BaseModel):
+    """Aggregated wait-time statistics for a workflow status."""
+
+    status: str
+    count: int = Field(ge=0)
+    oldest_days: int = Field(ge=0)
+    average_days: float = Field(ge=0)
+
+
+class PendencyAnalytics(BaseModel):
+    """Scoped pendency aging and workload summary."""
+
+    as_of: date
+    total_pending: int = Field(ge=0)
+    aging_buckets: dict[str, int]
+    by_status: list[PendencyStatusSummary]
+    oldest_items: list[PendencyItem]
