@@ -54,6 +54,7 @@ def test_policy_api_create_activate_and_enforce_prerequisites(api_client_and_ses
         db.commit()
         db.refresh(application)
         application_id = str(application.id)
+        application_uuid = application.id
 
     admin_headers = _login(client, "policy-api-admin@example.test", password)
     institution_headers = _login(client, "policy-api-institution@example.test", password)
@@ -121,7 +122,7 @@ def test_policy_api_create_activate_and_enforce_prerequisites(api_client_and_ses
 
     with session_factory() as db:
         db.add(ApplicationEvidence(
-            application_id=application_id,
+            application_id=application_uuid,
             title="Identity document",
             category="identity_document",
         ))
