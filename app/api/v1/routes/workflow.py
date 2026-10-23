@@ -1,9 +1,11 @@
 """Guarded workflow actions, case timeline, chain verification, and policy registry."""
 
+from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.v1.routes.applications import scoped_applications_statement
@@ -12,7 +14,14 @@ from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.workflow import ApplicationEvent, PolicyVersion
 from app.schemas.applications import ApplicationResponse
-from app.schemas.workflow import EventChainVerification, EventResponse, PolicyResponse, TransitionRequest
+from app.schemas.policy_rules import validate_policy_rules
+from app.schemas.workflow import (
+    EventChainVerification,
+    EventResponse,
+    PolicyCreate,
+    PolicyResponse,
+    TransitionRequest,
+)
 from app.services.workflow import transition_application, verify_event_chain
 
 router = APIRouter()
@@ -78,3 +87,52 @@ def list_policy_versions(
     return list(db.scalars(
         select(PolicyVersion).order_by(PolicyVersion.policy_key, PolicyVersion.version.desc())
     ).all())
+
+
+@router.post(
+    "/policies/registry",
+    response_model=PolicyResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a validated, inactive policy version",
+)
+def create_policy_version(
+    payload: PolicyCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PolicyVersion:
+    """Store a validated immutable version; publishing/activation is intentionally separate."""
+    if user.role not in {"policy_admin", "system_admin"}:
+        raise HTTPException(status_code=403, detail="Your role cannot create policy versions")
+    try:
+        validate_policy_rules(payload.rules_schema_version, payload.rules)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid policy rules: {exc}") from exc
+
+    latest_version = db.scalar(
+        select(func.max(PolicyVersion.version)).where(PolicyVersion.policy_key == payload.policy_key)
+    )
+    if latest_version is not None and payload.version <= latest_version:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Policy version must be greater than the latest version ({latest_version})",
+        )
+
+    policy = PolicyVersion(
+        policy_key=payload.policy_key,
+        version=payload.version,
+        title=payload.title,
+        description=payload.description,
+        effective_from=payload.effective_from.astimezone(UTC),
+        rules=payload.rules,
+        rules_schema_version=payload.rules_schema_version,
+        source_label=payload.source_label,
+        is_active=False,
+    )
+    db.add(policy)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This policy version already exists") from exc
+    db.refresh(policy)
+    return policy
