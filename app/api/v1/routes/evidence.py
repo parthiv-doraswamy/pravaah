@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.routes.applications import scoped_applications_statement
 from app.auth.dependencies import get_current_user
+from app.auth.permissions import EVIDENCE_WRITE_ROLES
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.core import Application, User
@@ -20,12 +21,6 @@ from app.schemas.evidence import EvidenceAttachmentResponse, EvidenceCreate, Evi
 from app.services.workflow import append_event
 
 router = APIRouter()
-_EVIDENCE_WRITE_ROLES = {
-    "institution_user", "scrutiny_officer", "regional_officer", "bureau_officer",
-    "evc_coordinator", "competent_authority", "policy_admin", "system_admin",
-}
-
-
 def _visible_application(db: Session, user: User, application_id: UUID) -> Application:
     application = db.scalar(scoped_applications_statement(user).where(Application.id == application_id))
     if application is None:
@@ -59,7 +54,7 @@ def create_evidence(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ApplicationEvidence:
-    if user.role not in _EVIDENCE_WRITE_ROLES:
+    if user.role not in EVIDENCE_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="Your role cannot register evidence")
     application = _visible_application(db, user, application_id)
     if payload.issued_on and payload.expires_on and payload.expires_on < payload.issued_on:
@@ -153,7 +148,7 @@ async def upload_evidence_attachment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> EvidenceAttachment:
-    if user.role not in _EVIDENCE_WRITE_ROLES:
+    if user.role not in EVIDENCE_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="Your role cannot upload evidence files")
     application = _visible_application(db, user, application_id)
     if application.status in {"approved", "rejected"}:
