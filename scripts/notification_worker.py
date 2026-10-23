@@ -36,8 +36,13 @@ def main() -> None:
     while True:
         try:
             logger.info("Expiry monitoring result: %s", run_once())
-        except (SQLAlchemyError, OSError, RuntimeError):
-            logger.exception("Expiry monitoring failed")
+        except (SQLAlchemyError, OSError, RuntimeError) as error:
+            # Exception messages can contain DSNs or provider details. Log the
+            # category without echoing the raw message or traceback.
+            logger.error(
+                "Expiry monitoring failed (error_type=%s)",
+                type(error).__name__,
+            )
             if args.once:
                 raise
             time.sleep(min(interval, 15))
