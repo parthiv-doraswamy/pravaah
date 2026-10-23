@@ -177,7 +177,7 @@ def test_notification_operations_console_summarizes_and_retries_visible_failed_d
     assert payload["retry_ready"] == 1
     assert payload["exhausted"] == 0
     assert payload["by_status"]["failed"] == 1
-    assert payload["items"][0]["application_number"] == "PVH-NT-OPS-001"
+    assert payload["items"][0]["application_number"] == "PVH-NT-ops-001"
     assert payload["items"][0]["recipient_name"] == "Institution User"
 
     retried = client.post(
