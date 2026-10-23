@@ -27,10 +27,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_security_settings(self) -> "Settings":
         """Reject unsafe JWT defaults and permissive/malformed production CORS origins."""
-        production = self.app_env.strip().lower() == "production"
-        if not production and self.app_env.lower() not in {"development", "test"}:
-            raise ValueError("APP_ENV must be development, test, or production")
-        if not production:
+        if self.app_env.strip().lower() != "production":
             return self
 
         if self.jwt_secret_key.startswith("local-development-only-"):
@@ -42,7 +39,7 @@ class Settings(BaseSettings):
             raise ValueError("CORS_ORIGINS must contain a comma-separated list of explicit origins")
 
         for origin in origins:
-            if origin == "*" or "*" in origin:
+            if "*" in origin:
                 raise ValueError("Wildcard CORS origins are not allowed in production")
             try:
                 parsed = urlsplit(origin)
