@@ -235,6 +235,25 @@ export type NotificationQueueResult = {
   detail: string
 }
 
+export type NotificationOperationsItem = NotificationRecord & {
+  application_number: string
+  application_title: string
+  recipient_name: string
+  recipient_role: string
+  updated_at: string
+}
+
+export type NotificationOperationsSummary = {
+  as_of: string
+  total: number
+  by_status: Record<string, number>
+  failed: number
+  retry_ready: number
+  exhausted: number
+  items: NotificationOperationsItem[]
+}
+
+
 export type EVCEligibility = {
   application_id: string
   eligible: boolean
@@ -329,6 +348,8 @@ export const api = {
   markNotificationRead: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
   retryNotification: (id: string) => request<NotificationRecord>(`/notifications/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   queueExpiryNotifications: () => request<NotificationQueueResult>('/notifications/queue-expiry', { method: 'POST' }),
+  notificationOperations: () => request<NotificationOperationsSummary>('/notifications/operations'),
+  retryOperationalNotification: (id: string) => request<NotificationRecord>(`/notifications/operations/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   evidence: (applicationId: string) => request<ApplicationEvidence[]>(`/applications/${encodeURIComponent(applicationId)}/evidence`),
   registerEvidence: (applicationId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence`, { method: 'POST', body: JSON.stringify(payload) }),
   renewEvidence: (applicationId: string, evidenceId: string, payload: EvidenceCreate) => request<ApplicationEvidence>(`/applications/${encodeURIComponent(applicationId)}/evidence/${encodeURIComponent(evidenceId)}/renewals`, { method: 'POST', body: JSON.stringify(payload) }),
