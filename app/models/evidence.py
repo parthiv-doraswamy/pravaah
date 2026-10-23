@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime, date
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, Uuid, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -21,6 +21,11 @@ class ApplicationEvidence(Base):
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     category: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     reference_number: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    supersedes_evidence_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("application_evidence.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    lifecycle_status: Mapped[str] = mapped_column(String(20), nullable=False, default="current", server_default="current", index=True)
     issued_on: Mapped[date | None] = mapped_column(Date(), nullable=True)
     expires_on: Mapped[date | None] = mapped_column(Date(), nullable=True, index=True)
     policy_key: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
