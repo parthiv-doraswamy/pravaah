@@ -46,8 +46,11 @@ class PolicyTransitionRule(StrictPolicyModel):
 
     @model_validator(mode="after")
     def final_decisions_require_human_approval(self):
-        if self.to_status in {"approved", "rejected"} and not self.requires_human_approval:
-            raise ValueError("Final approval and rejection transitions must require human approval")
+        if self.to_status in {"approved", "rejected"}:
+            if not self.requires_human_approval:
+                raise ValueError("Final approval and rejection transitions must require human approval")
+            if "competent_authority" not in self.allowed_roles:
+                raise ValueError("Final approval and rejection transitions must allow competent_authority")
         if self.from_status in {"approved", "rejected"}:
             raise ValueError("Final application states cannot have outgoing transitions")
         if len(set(self.allowed_roles)) != len(self.allowed_roles):
