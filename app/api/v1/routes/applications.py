@@ -15,6 +15,8 @@ from app.schemas.applications import ApplicationCreate, ApplicationPage, Applica
 from app.services.workflow import append_event
 
 router = APIRouter()
+
+
 def scoped_applications_statement(user: User):
     """Build a query scoped to the authenticated user's permitted institution region."""
     statement = select(Application)
