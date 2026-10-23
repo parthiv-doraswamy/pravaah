@@ -1,6 +1,6 @@
 """Persistent in-app notifications and idempotent expiry-alert queueing."""
 
-from datetime import UTC, date, datetime
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,27 +11,16 @@ from sqlalchemy.orm import Session
 from app.api.v1.routes.applications import scoped_applications_statement
 from app.auth.dependencies import get_current_user, require_roles
 from app.auth.permissions import NOTIFICATION_QUEUE_ROLES
+from app.core.clock import utc_now, utc_today
 from app.db.session import get_db
 from app.models.core import Application, User
 from app.models.evidence import ApplicationEvidence
 from app.models.notification import NotificationRecord
 from app.schemas.notifications import NotificationQueueResult, NotificationResponse
+from app.services.notification_jobs import expiry_severity
 from app.services.workflow import append_event
 
 router = APIRouter()
-
-
-def _expiry_severity(expires_on: date, today: date) -> tuple[str, int] | None:
-    days = (expires_on - today).days
-    if days < 0:
-        return "expired", days
-    if days <= 1:
-        return "urgent", days
-    if days <= 7:
-        return "warning", days
-    if days <= 30:
-        return "upcoming", days
-    return None
 
 
 @router.get("", response_model=list[NotificationResponse], summary="List the signed-in user's notifications")
@@ -61,7 +50,7 @@ def mark_notification_read(
     if notification is None:
         raise HTTPException(status_code=404, detail="Notification not found")
     if notification.read_at is None:
-        notification.read_at = datetime.now(UTC)
+        notification.read_at = utc_now()
         db.commit()
         db.refresh(notification)
     return notification
@@ -77,8 +66,8 @@ def queue_expiry_notifications(
     user: User = Depends(require_roles(*NOTIFICATION_QUEUE_ROLES)),
 ) -> NotificationQueueResult:
     """Create in-app records for visible expiring evidence; does not send email/SMS."""
-    now = datetime.now(UTC)
-    today = now.date()
+    now = utc_now()
+    today = utc_today(now)
     visible_ids = scoped_applications_statement(user).with_only_columns(Application.id).subquery()
     rows = db.execute(
         select(ApplicationEvidence, Application, User)
@@ -98,7 +87,7 @@ def queue_expiry_notifications(
     recipient_ids: set[UUID] = set()
     audited_evidence: set[UUID] = set()
     for evidence, application, recipient in rows:
-        classified = _expiry_severity(evidence.expires_on, today)
+        classified = expiry_severity(evidence.expires_on, today)
         if classified is None:
             continue
         severity, days = classified
