@@ -24,3 +24,14 @@ The dossier is an evidence-navigation and explainability aid, not an automated a
 ### Verification
 
 Integration coverage checks policy/evidence linkage, valid audit-chain reporting, disclaimer visibility, unauthenticated access denial, and institution-scope isolation. CI remains the authoritative test result for the branch; this document alone is not a claim that the test suite passed.
+
+
+## Chunk 2: Application workspace integration
+
+### Delivered
+
+The application detail screen now loads the dossier automatically and presents it as a dedicated Policy-to-Proof panel. Reviewers can refresh the dossier, inspect policy provenance, evidence and file checksums, compliance submission versions, EVC visits and reports, notification/escalation records, and the event hashes. Summary counts and a clear audit-chain status make the amount and integrity state of recorded data visible at a glance.
+
+The panel has loading, request-error, retry and empty states. Related record groups use collapsible sections so the case screen stays navigable. The UI uses the authenticated API client and does not bypass server-side scope checks. A browser end-to-end test covers loading the dossier and displaying policy provenance.
+
+The displayed audit status is limited to the server's hash-chain check. A valid hash chain is not an external trust anchor and cannot establish that an underlying policy is official. The panel repeats the human-review disclaimer to avoid implying that traceability equals certification or approval.
