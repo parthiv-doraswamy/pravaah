@@ -83,6 +83,22 @@ jobs:
 
   frontend-e2e:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pravaah_e2e
+          POSTGRES_USER: pravaah
+          POSTGRES_PASSWORD: pravaah
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pravaah -d pravaah_e2e"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PRAVAAH_E2E_DATABASE_URL: postgresql+psycopg://pravaah:pravaah@127.0.0.1:5432/pravaah_e2e
     defaults:
       run:
         working-directory: web
@@ -103,7 +119,7 @@ jobs:
         run: npm install
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
-      - name: Run browser end-to-end tests against live API
+      - name: Run browser end-to-end tests against live PostgreSQL-backed API
         run: npm run test:e2e
 
   frontend-build:
