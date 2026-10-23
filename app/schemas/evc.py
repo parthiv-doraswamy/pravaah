@@ -70,3 +70,42 @@ class EVCVisitResponse(BaseModel):
     created_by_user_id: UUID | None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("checklist", mode="before")
+    @classmethod
+    def normalize_legacy_checklist(cls, value):
+        """Convert pre-report EVC checklist maps to the current API list shape.
+
+        Some existing demo visits store checklist as a JSON object such as
+        {"campus_infrastructure": "pending"}. Normalize it at the API boundary
+        so old rows remain readable without a destructive database migration.
+        """
+        if value is None or isinstance(value, list):
+            return value
+        if not isinstance(value, dict):
+            return None
+
+        result_map = {
+            "pass": "pass",
+            "passed": "pass",
+            "complete": "pass",
+            "completed": "pass",
+            "verified": "pass",
+            "needs_attention": "needs_attention",
+            "fail": "needs_attention",
+            "failed": "needs_attention",
+            "issue": "needs_attention",
+            "not_applicable": "not_applicable",
+            "pending": "not_applicable",
+            "not_started": "not_applicable",
+        }
+        normalized = []
+        for key, result in value.items():
+            raw_result = str(result).strip().lower()
+            normalized.append({
+                "key": str(key),
+                "label": str(key).replace("_", " ").strip().title() or "Checklist item",
+                "result": result_map.get(raw_result, "not_applicable"),
+                "notes": None,
+            })
+        return normalized
