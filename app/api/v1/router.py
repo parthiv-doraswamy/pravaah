@@ -22,3 +22,5 @@ api_router.include_router(submissions_router, prefix="/compliance", tags=["compl
 api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(evc_router, prefix="/evc", tags=["EVC scheduling"])
 api_router.include_router(operations_router, prefix="/operations", tags=["operations intelligence"])
+from app.api.v1.routes.pendency import router as pendency_router
+api_router.include_router(pendency_router, prefix="/operations/pendency", tags=["operations intelligence"])
