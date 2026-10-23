@@ -158,7 +158,7 @@ def test_notification_read_requires_authentication(api_client_and_sessions):
 
 def test_notification_operations_console_summarizes_and_retries_visible_failed_delivery(api_client_and_sessions):
     client, db_factory = api_client_and_sessions
-    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "OPS-001")
+    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "ops-001")
     assert client.post("/api/v1/notifications/queue-expiry", headers=reviewer_headers).status_code == 200
     with db_factory() as db:
         item = db.query(NotificationRecord).filter_by(application_id=case_id).one()
@@ -198,7 +198,7 @@ def test_notification_operations_console_summarizes_and_retries_visible_failed_d
 
 def test_notification_operations_console_requires_operations_role_and_auth(api_client_and_sessions):
     client, db_factory = api_client_and_sessions
-    owner_headers, _, _ = make_case(client, db_factory, "OPS-002")
+    owner_headers, _, _ = make_case(client, db_factory, "ops-002")
     assert client.get("/api/v1/notifications/operations").status_code == 401
     denied = client.get("/api/v1/notifications/operations", headers=owner_headers)
     assert denied.status_code == 403
@@ -206,7 +206,7 @@ def test_notification_operations_console_requires_operations_role_and_auth(api_c
 
 def test_notification_operations_retry_rejects_pending_and_hidden_records(api_client_and_sessions):
     client, db_factory = api_client_and_sessions
-    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "OPS-003")
+    owner_headers, reviewer_headers, case_id = make_case(client, db_factory, "ops-003")
     assert client.post("/api/v1/notifications/queue-expiry", headers=reviewer_headers).status_code == 200
     with db_factory() as db:
         item = db.query(NotificationRecord).filter_by(application_id=case_id).one()
