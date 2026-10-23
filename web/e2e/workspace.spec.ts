@@ -76,6 +76,25 @@ test('institution can sign in and create a draft application', async ({ page }) 
       return
     }
 
+    if (path === '/operations/metrics') {
+      await route.fulfill({ json: {
+        as_of: '2026-10-23', total_applications: applications.length, active_applications: applications.length,
+        awaiting_review: 0, completed_applications: 0, applications_by_status: { draft: applications.length },
+        submissions_pending_review: 0, expired_evidence: 0, evidence_due_within_7_days: 0,
+        open_escalations: 0, failed_notifications: 0, evc_reports_pending: 0,
+      } })
+      return
+    }
+
+    if (path === '/operations/pendency') {
+      await route.fulfill({ json: {
+        as_of: '2026-10-23', total_pending: 0,
+        aging_buckets: { '0-2_days': 0, '3-7_days': 0, '8-14_days': 0, '15+_days': 0 },
+        by_status: [], oldest_items: [],
+      } })
+      return
+    }
+
     if (path === '/compliance/overview') {
       await route.fulfill({ json: {
         as_of: '2026-10-23', total_evidence: 0, expired: 0, due_within_1_day: 0,
@@ -213,6 +232,25 @@ test('institution can register evidence and verify the application audit timelin
       await route.fulfill({ json: [] })
       return
     }
+    if (path === '/operations/metrics') {
+      await route.fulfill({ json: {
+        as_of: '2026-10-23', total_applications: 1, active_applications: 1,
+        awaiting_review: 0, completed_applications: 0, applications_by_status: { draft: 1 },
+        submissions_pending_review: 0, expired_evidence: 0, evidence_due_within_7_days: 0,
+        open_escalations: 0, failed_notifications: 0, evc_reports_pending: 0,
+      } })
+      return
+    }
+
+    if (path === '/operations/pendency') {
+      await route.fulfill({ json: {
+        as_of: '2026-10-23', total_pending: 0,
+        aging_buckets: { '0-2_days': 0, '3-7_days': 0, '8-14_days': 0, '15+_days': 0 },
+        by_status: [], oldest_items: [],
+      } })
+      return
+    }
+
     if (path === '/evc/visits' || path === '/compliance/overview' || path === '/compliance/escalations' || path === '/notifications' || path === '/policies') {
       await route.fulfill({ json: path === '/compliance/overview' ? {
         as_of: '2026-10-23', total_evidence: 0, expired: 0, due_within_1_day: 0,
