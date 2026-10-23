@@ -15,7 +15,7 @@ Phase 4 turns the workflow data already stored by PRAVAAH into scoped operationa
 ## Metric semantics and limitations
 
 - Metrics are computed from persisted records visible to the authenticated user's role and scope; client-side loaded-page counts are not used for the new operational KPI cards.
-- “Awaiting review” is a configured set of workflow statuses, not an official regulatory service-level definition.
+- “Active” excludes completed, withdrawn, approved, and rejected applications. “Awaiting review” is a configured set of workflow statuses, not an official regulatory service-level definition.
 - “Evidence due within 7 days” includes dates from today through seven days ahead. Expired records are counted separately.
 - “EVC reports pending” means the visit is marked completed while the report is not submitted.
 - These metrics describe the prototype's data; they do not establish statutory compliance or replace human review.
