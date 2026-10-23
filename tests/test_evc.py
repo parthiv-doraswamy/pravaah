@@ -1,9 +1,13 @@
 """Integration tests for scoped EVC visit scheduling."""
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
+from sqlalchemy import select
 
 from app.auth.security import hash_password
 from app.models.core import Application, Institution, User
+from app.models.evc_visit import EVCVisit
 from app.models.workflow import ApplicationEvent
 
 
@@ -74,6 +78,39 @@ def test_evc_coordinator_can_schedule_and_complete_visit(api_client_and_sessions
         assert [event.event_type for event in events] == [
             "evc_visit_scheduled", "evc_visit_status_changed",
         ]
+
+
+
+def test_evc_visit_list_handles_legacy_checklist_and_evidence_ids(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    _, application_id = _scheduler(session_factory, email="evc-legacy-response@example.test")
+    token = _login(client, "evc-legacy-response@example.test")
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post(
+        "/api/v1/evc/visits",
+        headers=headers,
+        json={
+            "application_id": str(application_id),
+            "scheduled_for": (datetime.now(UTC) + timedelta(days=3)).isoformat(),
+            "mode": "virtual",
+        },
+    )
+    assert created.status_code == 201, created.text
+    visit_id = UUID(created.json()["id"])
+
+    # Simulate rows created by an older schema/data format without rewriting the DB.
+    with session_factory() as db:
+        visit = db.scalar(select(EVCVisit).where(EVCVisit.id == visit_id))
+        assert visit is not None
+        visit.checklist = {"campus_infrastructure": "pending"}
+        visit.linked_evidence_ids = ["legacy-not-a-uuid"]
+        db.commit()
+
+    listed = client.get("/api/v1/evc/visits", headers=headers)
+    assert listed.status_code == 200, listed.text
+    legacy_visit = next(item for item in listed.json() if item["id"] == str(visit_id))
+    assert legacy_visit["checklist"][0]["key"] == "campus_infrastructure"
+    assert legacy_visit["linked_evidence_ids"] == ["legacy-not-a-uuid"]
 
 
 def test_institution_user_cannot_schedule_evc_visit(api_client_and_sessions):
