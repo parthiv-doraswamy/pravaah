@@ -147,3 +147,60 @@ def test_regional_officer_evc_listing_is_scoped_to_assigned_region(api_client_an
     assert response.status_code == 200, response.text
     assert len(response.json()) == 1
     assert response.json()[0]["application_id"] == str(own_case_id)
+
+
+def test_transition_rejects_roles_not_assigned_to_the_stage(api_client_and_sessions):
+    from fastapi import HTTPException
+    import pytest
+    from sqlalchemy import select
+
+    from app.models.workflow import ApplicationEvent
+    from app.services.workflow import transition_application
+
+    rejected_roles = (
+        "scrutiny_officer",
+        "regional_officer",
+        "bureau_officer",
+        "evc_coordinator",
+        "competent_authority",
+        "policy_admin",
+        "auditor",
+        "system_admin",
+        "unrecognized_role",
+    )
+    _, session_factory = api_client_and_sessions
+
+    for index, role in enumerate(rejected_roles):
+        with session_factory() as db:
+            institution = _institution(db, code=f"WF-ROLE-{index}", region="REGION-A")
+            actor = _user(
+                db,
+                email=f"wf-role-{index}@example.test",
+                role=role,
+                institution_id=institution.id,
+            )
+            application = Application(
+                application_number=f"PVH-WF-ROLE-{index}",
+                title="Workflow role guard test",
+                status="draft",
+                institution_id=institution.id,
+            )
+            db.add(application)
+            db.commit()
+
+            with pytest.raises(HTTPException) as error:
+                transition_application(
+                    db,
+                    application=application,
+                    actor=actor,
+                    target_status="submitted",
+                    expected_status="draft",
+                )
+
+            assert error.value.status_code == 409
+            db.refresh(application)
+            assert application.status == "draft"
+            events = db.scalars(
+                select(ApplicationEvent).where(ApplicationEvent.application_id == application.id)
+            ).all()
+            assert events == []
