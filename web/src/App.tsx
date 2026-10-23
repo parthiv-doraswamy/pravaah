@@ -72,6 +72,7 @@ function App() {
   const [evidenceExpires, setEvidenceExpires] = useState('')
   const [evidencePolicy, setEvidencePolicy] = useState('')
   const [evidenceNotes, setEvidenceNotes] = useState('')
+  const [renewalEvidenceId, setRenewalEvidenceId] = useState<string | null>(null)
   const [savingEvidence, setSavingEvidence] = useState(false)
   const [eventVerification, setEventVerification] = useState<EventVerification | null>(null)
   const [loadingTimeline, setLoadingTimeline] = useState(false)
@@ -525,13 +526,15 @@ function App() {
         ...(evidencePolicy.trim() ? { policy_key: evidencePolicy.trim() } : {}),
         ...(evidenceNotes.trim() ? { notes: evidenceNotes.trim() } : {}),
       }
-      await api.registerEvidence(selectedApplication.id, payload)
+      if (renewalEvidenceId) await api.renewEvidence(selectedApplication.id, renewalEvidenceId, payload)
+      else await api.registerEvidence(selectedApplication.id, payload)
       const [evidence, events, verification] = await Promise.all([api.evidence(selectedApplication.id), api.applicationEvents(selectedApplication.id), api.verifyEvents(selectedApplication.id)])
       setEvidenceItems(evidence)
       setCaseEvents(events)
       setEventVerification(verification)
       setEvidenceTitle(''); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(''); setEvidenceNotes('')
-      setNotice('Evidence metadata registered and added to the audit timeline.')
+      setNotice(renewalEvidenceId ? 'Renewal saved as a new version. The prior evidence metadata and history remain available.' : 'Evidence metadata registered and added to the audit timeline.')
+      setRenewalEvidenceId(null)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not register evidence metadata.')
     } finally {
@@ -816,7 +819,7 @@ function App() {
                   <label>Expiry date<input type="date" value={evidenceExpires} onChange={event => setEvidenceExpires(event.target.value)} min={evidenceIssued || undefined}/></label>
                 </div>
                 <label className="evidence-notes-label">Notes<textarea value={evidenceNotes} onChange={event => setEvidenceNotes(event.target.value)} rows={2} maxLength={3000} placeholder="Optional context for reviewers"/></label>
-                <button className="primary-button" disabled={savingEvidence || evidenceTitle.trim().length < 2}>{savingEvidence ? 'Registering…' : 'Register evidence'}</button>
+                <div className="evidence-form-actions"><span>{renewalEvidenceId ? 'A renewal requires a new expiry date and preserves the prior version.' : 'New evidence is recorded as version 1.'}</span><div>{renewalEvidenceId && <button type="button" className="secondary-button" onClick={() => { setRenewalEvidenceId(null); setEvidenceTitle(''); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(''); setEvidenceNotes('') }}>Cancel renewal</button>}<button className="primary-button" disabled={savingEvidence || evidenceTitle.trim().length < 2 || (Boolean(renewalEvidenceId) && !evidenceExpires)}>{savingEvidence ? 'Saving…' : renewalEvidenceId ? 'Create renewal version' : 'Register evidence'}</button></div></div>
               </form>
               <div className="evidence-list">
                 {loadingEvidence ? <div className="table-state"><div className="loading-line"/><span>Loading evidence register…</span></div> : evidenceItems.length === 0 ? <div className="empty-state"><div className="empty-icon"><FileCheck2 size={20}/></div><strong>No evidence registered yet</strong><p>Add evidence metadata above to start the compliance register.</p></div> : evidenceItems.map(item => {
@@ -825,7 +828,7 @@ function App() {
                   const expiryState = days === null ? 'No expiry date' : days < 0 ? 'Expired' : days <= 30 ? 'Expires soon' : 'Valid'
                   return <article className="evidence-item" key={item.id}>
                     <div className="evidence-file-icon"><FileCheck2 size={18}/></div><div className="evidence-item-main"><div className="evidence-item-heading"><strong>{item.title}</strong><span className={'evidence-expiry ' + (days !== null && days < 0 ? 'expired' : days !== null && days <= 30 ? 'expiring' : 'valid')}>{expiryState}</span></div><p>{item.category.replaceAll('_', ' ')}{item.reference_number ? ' · Ref ' + item.reference_number : ''}{item.policy_key ? ' · Policy ' + item.policy_key : ''}</p>{item.notes && <p className="evidence-notes">{item.notes}</p>}<span className="evidence-date">{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'Expiry not recorded'}{item.issued_on ? ' · Issued ' + formatDate(item.issued_on) : ''}</span>
-                    <div className="evidence-renewal-row"><button type="button" className="text-button" onClick={() => { setEvidenceTitle(item.title + ' — renewal'); setEvidenceCategory(item.category); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(item.policy_key || ''); setEvidenceNotes('Renewal record started from prior evidence ' + item.id.slice(0, 8) + '. Verify the new document details before registering.'); setNotice('Renewal draft prepared. The existing evidence record remains unchanged.') }}>Start renewal record <ArrowRight size={13}/></button><span>Creates a separate record; does not renew or alter the existing document.</span></div>
+                    <div className="evidence-renewal-row">{item.lifecycle_status === 'current' ? <button type="button" className="text-button" onClick={() => { setRenewalEvidenceId(item.id); setEvidenceTitle(item.title); setEvidenceCategory(item.category); setEvidenceReference(''); setEvidenceIssued(''); setEvidenceExpires(''); setEvidencePolicy(item.policy_key || ''); setEvidenceNotes('Renewal of evidence version ' + item.version + ' (' + item.id.slice(0, 8) + ').'); setNotice('Renewal draft prepared. Submit the new expiry date to create a linked version.') }}>Start renewal record <ArrowRight size={13}/></button> : <span>This version has been superseded.</span>}<span>Version {item.version} · {item.lifecycle_status === 'replaced' ? 'Superseded' : 'Current version'}</span>{item.supersedes_evidence_id && <span>Supersedes record {item.supersedes_evidence_id.slice(0, 8).toUpperCase()}</span>}</div>
                     {evidenceVisitReferences.some(visit => (visit.linked_evidence_ids || []).includes(item.id)) && <div className="evidence-report-references"><strong>Referenced by EVC reports</strong>{evidenceVisitReferences.filter(visit => (visit.linked_evidence_ids || []).includes(item.id)).map(visit => <span key={visit.id}>Visit {visit.id.slice(0, 8).toUpperCase()} · {visit.report_status.replaceAll('_', ' ')} · {visit.report_submitted_at ? 'Submitted ' + formatDate(visit.report_submitted_at) : 'Not submitted'}</span>)}</div>}
                     <div className="evidence-attachments">
                       <div className="evidence-attachments-heading"><strong><FileText size={13}/> Attached files</strong><span>{(attachmentsByEvidence[item.id] || []).length} file(s)</span></div>
