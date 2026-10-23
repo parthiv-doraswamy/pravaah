@@ -73,6 +73,53 @@ jobs:
       - name: Run one notification worker cycle
         run: python -m scripts.notification_worker --once
 
+  smtp-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pravaah_smtp
+          POSTGRES_USER: pravaah
+          POSTGRES_PASSWORD: pravaah
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pravaah -d pravaah_smtp"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.27.8
+        ports:
+          - 1025:1025
+          - 8025:8025
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://pravaah:pravaah@127.0.0.1:5432/pravaah_smtp
+      JWT_SECRET_KEY: ci-only-smtp-test-secret-not-for-production
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "1025"
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      SMTP_FROM: pravaah-ci@example.test
+      SMTP_USE_TLS: "false"
+      MAILPIT_API: http://127.0.0.1:8025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project and smoke-test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Apply database migrations
+        run: alembic upgrade head
+      - name: Verify real SMTP delivery, persistence, and deduplication
+        run: python -m scripts.smtp_delivery_smoke
+
   compose-config:
     runs-on: ubuntu-latest
     steps:
