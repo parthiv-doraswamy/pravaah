@@ -286,6 +286,7 @@ export type PolicyToProofDossier = {
   disclaimer: string
   application: Pick<Application, 'id' | 'application_number' | 'title' | 'status' | 'institution_id' | 'created_at' | 'updated_at'>
   policy_versions: { id: string; policy_key: string; version: number; title: string; description: string; effective_from: string; rules_schema_version: number; source_label: string; is_active: boolean }[]
+  policy_evidence_links: { evidence_id: string; evidence_title: string; policy_key: string | null; matched: boolean; policy_versions: { id: string; version: number; title: string; source_label: string; is_active: boolean }[] }[]
   evidence: { id: string; title: string; category: string; reference_number: string | null; version: number; supersedes_evidence_id: string | null; lifecycle_status: string; issued_on: string | null; expires_on: string | null; policy_key: string | null; notes: string | null; created_at: string }[]
   attachments: { id: string; evidence_id: string; filename: string; content_type: string; size_bytes: number; sha256: string; created_at: string }[]
   compliance_submissions: { id: string; submission_type: string; title: string; status: string; version: number; evidence_ids: string[]; supersedes_submission_id: string | null; submitted_at: string | null; reviewed_at: string | null; review_notes: string | null }[]
