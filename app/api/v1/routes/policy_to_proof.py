@@ -108,6 +108,30 @@ def policy_to_proof_dossier(
             .limit(500)
         ).all()
 
+    policies_by_key: dict[str, list[PolicyVersion]] = {}
+    for policy in policies:
+        policies_by_key.setdefault(policy.policy_key, []).append(policy)
+
+    policy_evidence_links = [
+        {
+            "evidence_id": str(item.id),
+            "evidence_title": item.title,
+            "policy_key": item.policy_key,
+            "matched": bool(item.policy_key and policies_by_key.get(item.policy_key)),
+            "policy_versions": [
+                {
+                    "id": str(policy.id),
+                    "version": policy.version,
+                    "title": policy.title,
+                    "source_label": policy.source_label,
+                    "is_active": policy.is_active,
+                }
+                for policy in policies_by_key.get(item.policy_key or "", [])
+            ],
+        }
+        for item in evidence
+    ]
+
     chain_valid, first_invalid_sequence = verify_event_chain(events)
     return {
         "as_of": datetime.now(UTC),
@@ -138,6 +162,7 @@ def policy_to_proof_dossier(
             }
             for item in policies
         ],
+        "policy_evidence_links": policy_evidence_links,
         "evidence": [
             {
                 "id": str(item.id),
