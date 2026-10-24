@@ -26,7 +26,7 @@ test('live API persists a draft, evidence metadata, and audit history across rel
 
   await page.getByLabel('Evidence title').fill(evidenceTitle)
   await page.getByRole('button', { name: 'Register evidence' }).click()
-  await expect(page.getByText(evidenceTitle).first()).toBeVisible()
+  await expect(page.getByText(evidenceTitle).last()).toBeVisible()
   await expect(page.getByText('Audit chain verified').first()).toBeVisible()
 
   // A second reload verifies the evidence row and its audit event were persisted.
