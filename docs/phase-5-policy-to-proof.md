@@ -35,3 +35,16 @@ The application detail screen now loads the dossier automatically and presents i
 The panel has loading, request-error, retry and empty states. Related record groups use collapsible sections so the case screen stays navigable. The UI uses the authenticated API client and does not bypass server-side scope checks. A browser end-to-end test covers loading the dossier and displaying policy provenance.
 
 The displayed audit status is limited to the server's hash-chain check. A valid hash chain is not an external trust anchor and cannot establish that an underlying policy is official. The panel repeats the human-review disclaimer to avoid implying that traceability equals certification or approval.
+
+## Chunk 3: Integrity and regression hardening
+
+### Delivered
+
+- Added an integration regression test proving that the dossier exposes attachment filename and SHA-256 metadata without exposing private storage keys.
+- Added a tampering test that modifies a persisted event after its hash was recorded and confirms the dossier reports an invalid audit chain and identifies the first invalid sequence.
+- Fixed two Playwright assertions that became ambiguous after the new dossier panel introduced a second visible “Audit chain verified” status. The assertions now select the intended first status while retaining the existing end-to-end coverage.
+
+### Verification notes
+
+The prior backend test, lint, frontend build, PostgreSQL smoke, SMTP smoke, Compose configuration, and Compose reliability jobs passed. The prior frontend end-to-end job failed only on strict-mode locator ambiguity for the duplicated audit status text; the updated assertions address that observed failure. The updated branch's CI run remains the source of truth for the fixes.
+
