@@ -59,3 +59,14 @@ The prior backend test, lint, frontend build, PostgreSQL smoke, SMTP smoke, Comp
 
 The export is a point-in-time copy of the dossier response. It does not include attachment bytes or private storage keys, and it does not convert a hash-chain result into an official certification.
 
+## Chunk 5: Portable audit-chain CSV
+
+### Delivered
+
+- Added **Export audit CSV** beside the full JSON dossier export.
+- Exports one row per recorded application event with sequence, timestamp, event type, status transition, actor ID, reason, previous hash, and event hash.
+- Repeats the dossier timestamp, application number, overall chain-validity result, and first invalid sequence on each event row so a CSV remains interpretable when filtered or shared.
+- Escapes CSV cells consistently, including commas, quotes, and line breaks, and sanitizes the application-specific filename.
+- Added browser E2E coverage for the CSV download and fixed the live-API evidence assertion to target the visible evidence row when a collapsed dossier section contains a duplicate title.
+
+The CSV is a convenient review/export format, not a new source of truth. It reflects the currently loaded dossier snapshot and the server's audit-chain verification result; it does not provide an external trust anchor or prove the underlying policy is official.
