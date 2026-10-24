@@ -324,6 +324,10 @@ test('institution can register evidence and verify the application audit timelin
   await expect(page.getByRole('heading', { name: 'Policy-to-Proof dossier' })).toBeVisible()
   await expect(page.getByText('Evidence expiry demo policy · v1')).toBeVisible()
   await expect(page.getByText('Traceability dossier for human review.', { exact: false })).toBeVisible()
+  const dossierDownloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export JSON' }).click()
+  const dossierDownload = await dossierDownloadPromise
+  expect(dossierDownload.suggestedFilename()).toBe('pravaah-policy-to-proof-PVH-E2E-0001.json')
   await page.getByLabel('Evidence title').fill('Fire safety certificate')
   await page.getByRole('button', { name: 'Register evidence' }).click()
 
