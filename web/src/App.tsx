@@ -1004,13 +1004,45 @@ function App() {
                     link.remove()
                     URL.revokeObjectURL(url)
                   }}>Export JSON</button>
+                  <button type="button" className="secondary-button small-button" disabled={!policyDossier || loadingPolicyDossier} onClick={() => {
+                    if (!policyDossier) return
+                    const columns = ['application_number', 'dossier_as_of', 'audit_chain_valid', 'first_invalid_sequence', 'sequence', 'occurred_at', 'event_type', 'from_status', 'to_status', 'actor_user_id', 'reason', 'previous_hash', 'event_hash']
+                    const escapeCsv = (value: unknown) => {
+                      const text = value == null ? '' : String(value)
+                      return `"${text.replace(/"/g, '""')}"`
+                    }
+                    const rows = policyDossier.audit.events.map(event => [
+                      policyDossier.application.application_number,
+                      policyDossier.as_of,
+                      policyDossier.audit.valid,
+                      policyDossier.audit.first_invalid_sequence,
+                      event.sequence,
+                      event.occurred_at,
+                      event.event_type,
+                      event.from_status,
+                      event.to_status,
+                      event.actor_user_id,
+                      event.reason,
+                      event.previous_hash,
+                      event.event_hash,
+                    ])
+                    const csv = [columns, ...rows].map(row => row.map(escapeCsv).join(',')).join('\\r\\n')
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+                    const url = URL.createObjectURL(blob)
+                    const link = document.createElement('a')
+                    link.href = url
+                    link.download = `pravaah-audit-${policyDossier.application.application_number.replace(/[^a-zA-Z0-9_-]/g, '-')}.csv`
+                    document.body.appendChild(link)
+                    link.click()
+                    link.remove()
+                    URL.revokeObjectURL(url)
+                  }}>Export audit CSV</button>
                   <button type="button" className="secondary-button small-button" disabled={loadingPolicyDossier} onClick={() => {
                     setLoadingPolicyDossier(true)
                     setPolicyDossierError('')
                     void api.policyToProof(selectedApplication.id).then(setPolicyDossier).catch(error => setPolicyDossierError(error instanceof Error ? error.message : 'Could not refresh the dossier.')).finally(() => setLoadingPolicyDossier(false))
                   }}>{loadingPolicyDossier ? 'Loading…' : 'Refresh dossier'}</button>
-                </div>
-              </div>
+                </div>            </div>
               {loadingPolicyDossier && !policyDossier ? <div className="table-state"><div className="loading-line"/><span>Assembling traceability records…</span></div>
                 : policyDossierError ? <div className="policy-dossier-error" role="alert"><strong>Dossier unavailable</strong><p>{policyDossierError}</p><button type="button" className="secondary-button small-button" onClick={() => {
                   setLoadingPolicyDossier(true)
