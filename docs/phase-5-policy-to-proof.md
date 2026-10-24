@@ -70,3 +70,15 @@ The export is a point-in-time copy of the dossier response. It does not include 
 - Added browser E2E coverage for the CSV download and fixed the live-API evidence assertion to target the visible evidence row when a collapsed dossier section contains a duplicate title.
 
 The CSV is a convenient review/export format, not a new source of truth. It reflects the currently loaded dossier snapshot and the server's audit-chain verification result; it does not provide an external trust anchor or prove the underlying policy is official.
+
+## Chunk 6: Explicit policy-to-evidence linkage
+
+### Delivered
+
+- Added a backend `policy_evidence_links` collection pairing each evidence record with all matching policy versions by its recorded `policy_key`.
+- Each link reports whether a policy version was found and includes the version ID, version number, title, source label, and active state for review.
+- Added a dedicated **Policy-to-evidence links** section in the application dossier, with a matched/total count and an explicit unresolved-reference message when an evidence record has no key or no matching policy version.
+- Added integration coverage for both a successfully matched evidence record and an unresolved policy key, plus browser E2E coverage for displaying a linked policy.
+- Fixed the live API E2E audit-event selector to choose the visible event when duplicate text also exists in a collapsed dossier section.
+
+The linkage is based only on the policy key recorded on an evidence item; it does not prove that the evidence satisfies a policy rule or that a policy is authoritative. Unresolved links are surfaced for human review rather than inferred or silently repaired.
