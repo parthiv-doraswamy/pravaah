@@ -59,6 +59,12 @@ def test_policy_to_proof_dossier_links_policy_evidence_and_valid_audit_chain(api
             reference_number="FSC-TRACE-001",
             policy_key="EVIDENCE_EXPIRY",
         )
+        unlinked_evidence = ApplicationEvidence(
+            application_id=application.id,
+            title="Unmapped lab certificate",
+            category="lab_certificate",
+            policy_key="MISSING_POLICY",
+        )
         policy = PolicyVersion(
             policy_key="EVIDENCE_EXPIRY",
             version=1,
@@ -69,7 +75,7 @@ def test_policy_to_proof_dossier_links_policy_evidence_and_valid_audit_chain(api
             source_label="Synthetic test policy",
             is_active=True,
         )
-        db.add_all([evidence, policy])
+        db.add_all([evidence, unlinked_evidence, policy])
         db.flush()
         append_event(
             db,
@@ -91,9 +97,14 @@ def test_policy_to_proof_dossier_links_policy_evidence_and_valid_audit_chain(api
     assert payload["application"]["application_number"] == "PVH-TRACE-001"
     assert payload["policy_versions"][0]["policy_key"] == "EVIDENCE_EXPIRY"
     assert payload["evidence"][0]["title"] == "Fire safety certificate"
+    links = {item["evidence_title"]: item for item in payload["policy_evidence_links"]}
+    assert links["Fire safety certificate"]["matched"] is True
+    assert links["Fire safety certificate"]["policy_versions"][0]["version"] == 1
+    assert links["Unmapped lab certificate"]["matched"] is False
+    assert links["Unmapped lab certificate"]["policy_versions"] == []
     assert payload["audit"]["valid"] is True
     assert payload["audit"]["event_count"] == 1
-    assert payload["counts"]["evidence"] == 1
+    assert payload["counts"]["evidence"] == 2
     assert "not official AICTE rules" in payload["disclaimer"]
 
 
