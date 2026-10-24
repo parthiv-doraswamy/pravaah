@@ -5,7 +5,8 @@ from datetime import UTC, datetime, timedelta
 from app.auth.security import hash_password
 from app.models.core import Application, Institution, User
 from app.models.evidence import ApplicationEvidence
-from app.models.workflow import PolicyVersion
+from app.models.evidence_attachment import EvidenceAttachment
+from app.models.workflow import ApplicationEvent, PolicyVersion
 from app.services.workflow import append_event
 
 
@@ -107,6 +108,67 @@ def test_policy_to_proof_dossier_hides_applications_outside_institution_scope(ap
     )
     assert response.status_code == 404
 
+
+
+def test_policy_to_proof_exposes_file_integrity_without_private_storage_keys_and_flags_tampering(api_client_and_sessions):
+    client, session_factory = api_client_and_sessions
+    headers, application_id, _ = _case(client, session_factory, "005")
+
+    with session_factory() as db:
+        application = db.get(Application, application_id)
+        evidence = ApplicationEvidence(
+            application_id=application.id,
+            title="Signed inspection report",
+            category="inspection_report",
+            policy_key=None,
+        )
+        db.add(evidence)
+        db.flush()
+        attachment = EvidenceAttachment(
+            application_id=application.id,
+            evidence_id=evidence.id,
+            original_filename="inspection.pdf",
+            storage_key="private-object-key-005",
+            content_type="application/pdf",
+            size_bytes=128,
+            sha256_hex="a" * 64,
+        )
+        db.add(attachment)
+        event = append_event(
+            db,
+            application_id=application.id,
+            event_type="evidence_registered",
+            from_status=None,
+            to_status="draft",
+            actor_user_id=None,
+            metadata={"evidence_title": evidence.title},
+        )
+        db.commit()
+        event_id = event.id
+
+    response = client.get(
+        f"/api/v1/applications/{application_id}/policy-to-proof",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["attachments"][0]["filename"] == "inspection.pdf"
+    assert payload["attachments"][0]["sha256"] == "a" * 64
+    assert "storage_key" not in payload["attachments"][0]
+    assert "private-object-key-005" not in response.text
+
+    with session_factory() as db:
+        event = db.get(ApplicationEvent, event_id)
+        event.reason = "Altered after event hash was written"
+        db.commit()
+
+    tampered = client.get(
+        f"/api/v1/applications/{application_id}/policy-to-proof",
+        headers=headers,
+    )
+    assert tampered.status_code == 200
+    assert tampered.json()["audit"]["valid"] is False
+    assert tampered.json()["audit"]["first_invalid_sequence"] == 1
 
 def test_policy_to_proof_requires_authentication(api_client_and_sessions):
     client, session_factory = api_client_and_sessions
