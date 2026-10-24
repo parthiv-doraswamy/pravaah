@@ -34,8 +34,8 @@ test('live API persists a draft, evidence metadata, and audit history across rel
   await expect(page.getByRole('heading', { name: 'Good to see you, Demo.' })).toBeVisible()
   await page.getByText(title).first().click()
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
-  await expect(page.getByText(evidenceTitle).first()).toBeVisible()
-  await expect(page.getByText('Audit chain verified')).toBeVisible()
+  await expect(page.getByText(evidenceTitle).last()).toBeVisible()
+  await expect(page.getByText('Audit chain verified').first()).toBeVisible()
   await expect(page.getByText(/\d+ events checked\. No tampering detected in the stored chain\./)).toBeVisible()
   await expect(page.getByText('evidence registered', { exact: false }).first()).toBeVisible()
 
