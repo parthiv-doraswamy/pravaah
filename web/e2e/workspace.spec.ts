@@ -328,6 +328,10 @@ test('institution can register evidence and verify the application audit timelin
   await page.getByRole('button', { name: 'Export JSON' }).click()
   const dossierDownload = await dossierDownloadPromise
   expect(dossierDownload.suggestedFilename()).toBe('pravaah-policy-to-proof-PVH-E2E-0001.json')
+  const auditDownloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export audit CSV' }).click()
+  const auditDownload = await auditDownloadPromise
+  expect(auditDownload.suggestedFilename()).toBe('pravaah-audit-PVH-E2E-0001.csv')
   await page.getByLabel('Evidence title').fill('Fire safety certificate')
   await page.getByRole('button', { name: 'Register evidence' }).click()
 
