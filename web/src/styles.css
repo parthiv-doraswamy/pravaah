@@ -318,3 +318,6 @@
 .policy-dossier-error strong{font-size:12px;color:#9f3328}
 .policy-dossier-error p{font-size:11px;color:#8e514b;line-height:1.6}
 @media(max-width:700px){.policy-dossier{padding:14px}.policy-dossier-heading{flex-direction:column}.policy-dossier-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.policy-dossier-audit{grid-column:span 2}.policy-dossier-count{gap:6px;padding:10px}.policy-dossier-count span{font-size:9px}}
+
+.policy-dossier-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+@media(max-width:700px){.policy-dossier-actions{width:100%;justify-content:stretch}.policy-dossier-actions button{flex:1}}
