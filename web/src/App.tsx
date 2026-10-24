@@ -1026,7 +1026,7 @@ function App() {
                       event.previous_hash,
                       event.event_hash,
                     ])
-                    const csv = [columns, ...rows].map(row => row.map(escapeCsv).join(',')).join('\\r\\n')
+                    const csv = [columns, ...rows].map(row => row.map(escapeCsv).join(',')).join('\r\n')
                     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
                     const url = URL.createObjectURL(blob)
                     const link = document.createElement('a')
