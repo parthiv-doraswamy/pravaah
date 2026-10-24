@@ -30,7 +30,7 @@ Exact versions will be pinned and verified as the project is bootstrapped.
 - Scheduled expiry scans and persistent compliance escalations with audit events
 - Optional SMTP delivery with persistent attempt logs and capped exponential retry backoff; email remains deferred when SMTP is not configured
 - Application intake, scrutiny, returns, and resubmissions
-- Policy-to-Proof case timeline
+- Policy-to-Proof case timeline and scoped traceability dossier linking policy versions, evidence, submissions, EVC records, notification state, escalations, and verified audit history
 - Deadline provenance, undertakings, and compliance evidence
 - Secure document validity and renewal tracking
 - Reliable notifications, retries, and escalations

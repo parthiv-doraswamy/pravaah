@@ -5,7 +5,7 @@ import {
   Filter, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X, Inbox, MailWarning,
 } from 'lucide-react'
-import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type OperationsMetrics, type PendencyAnalytics, type TaskInbox, type TaskInboxItem, type NotificationOperationsSummary, type NotificationOperationsItem, type User } from './api'
+import { api, clearToken, getToken, saveToken, type Application, type ApplicationEvent, type ApplicationEvidence, type ComplianceOverview, type EventVerification, type PolicyVersion, type NotificationRecord, type ComplianceEscalation, type EVCVisit, type EVCEligibility, type EvidenceAttachment, type ComplianceSubmission, type OperationsMetrics, type PendencyAnalytics, type TaskInbox, type TaskInboxItem, type NotificationOperationsSummary, type NotificationOperationsItem, type PolicyToProofDossier, type User } from './api'
 
 type View = 'overview' | 'applications' | 'detail' | 'policies' | 'compliance' | 'evc' | 'inbox' | 'notifications' | 'reports'
 type EVCChecklistItem = { key: 'governance' | 'infrastructure' | 'faculty' | 'curriculum' | 'safety' | 'records'; label: string; result: 'pass' | 'needs_attention' | 'not_applicable'; notes: string }
@@ -75,6 +75,9 @@ function App() {
   const [renewalEvidenceId, setRenewalEvidenceId] = useState<string | null>(null)
   const [savingEvidence, setSavingEvidence] = useState(false)
   const [eventVerification, setEventVerification] = useState<EventVerification | null>(null)
+  const [policyDossier, setPolicyDossier] = useState<PolicyToProofDossier | null>(null)
+  const [loadingPolicyDossier, setLoadingPolicyDossier] = useState(false)
+  const [policyDossierError, setPolicyDossierError] = useState('')
   const [loadingTimeline, setLoadingTimeline] = useState(false)
   const [transitionReason, setTransitionReason] = useState('')
   const [transitionBusy, setTransitionBusy] = useState(false)
@@ -226,6 +229,22 @@ function App() {
       })
       .catch(error => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load the application timeline and evidence.') })
       .finally(() => { if (!cancelled) { setLoadingTimeline(false); setLoadingEvidence(false); setLoadingSubmissions(false) } })
+    return () => { cancelled = true }
+  }, [user, view, selectedApplication])
+
+  useEffect(() => {
+    if (!user || view !== 'detail' || !selectedApplication) return
+    let cancelled = false
+    setLoadingPolicyDossier(true)
+    setPolicyDossierError('')
+    api.policyToProof(selectedApplication.id).then(dossier => {
+      if (!cancelled) setPolicyDossier(dossier)
+    }).catch(error => {
+      if (!cancelled) {
+        setPolicyDossier(null)
+        setPolicyDossierError(error instanceof Error ? error.message : 'Could not load the traceability dossier.')
+      }
+    }).finally(() => { if (!cancelled) setLoadingPolicyDossier(false) })
     return () => { cancelled = true }
   }, [user, view, selectedApplication])
 
@@ -969,6 +988,106 @@ function App() {
           {view === 'detail' && selectedApplication && <section className="panel case-detail-panel">
             <div className="panel-heading"><div><div className="eyebrow">APPLICATION {selectedApplication.application_number}</div><h2>{selectedApplication.title}</h2><p>{selectedApplication.summary || 'No summary provided.'}</p></div><button className="secondary-button small-button" onClick={() => setView('applications')}><ArrowRight size={15}/> Back to register</button></div>
             <div className="case-detail-facts"><div><span>Current status</span><strong>{statusLabels[selectedApplication.status] || selectedApplication.status.replaceAll('_', ' ')}</strong></div><div><span>Created</span><strong>{formatDate(selectedApplication.created_at)}</strong></div><div><span>Last updated</span><strong>{formatDate(selectedApplication.updated_at)}</strong></div><div><span>Submitted</span><strong>{selectedApplication.submitted_at ? formatDate(selectedApplication.submitted_at) : 'Not submitted'}</strong></div><div><span>Institution reference</span><strong>{selectedApplication.institution_id.slice(0, 8).toUpperCase()}</strong></div></div>
+            <section className="policy-dossier" aria-labelledby="policy-dossier-heading">
+              <div className="policy-dossier-heading">
+                <div><div className="eyebrow">TRACEABILITY & EVIDENCE</div><h2 id="policy-dossier-heading">Policy-to-Proof dossier</h2><p>Connect policy versions, evidence, review activity and the audit chain.</p></div>
+                <div className="policy-dossier-actions">
+                  <button type="button" className="secondary-button small-button" disabled={!policyDossier || loadingPolicyDossier} onClick={() => {
+                    if (!policyDossier) return
+                    const blob = new Blob([JSON.stringify(policyDossier, null, 2)], { type: 'application/json;charset=utf-8' })
+                    const url = URL.createObjectURL(blob)
+                    const link = document.createElement('a')
+                    link.href = url
+                    link.download = `pravaah-policy-to-proof-${policyDossier.application.application_number.replace(/[^a-zA-Z0-9_-]/g, '-')}.json`
+                    document.body.appendChild(link)
+                    link.click()
+                    link.remove()
+                    URL.revokeObjectURL(url)
+                  }}>Export JSON</button>
+                  <button type="button" className="secondary-button small-button" disabled={!policyDossier || loadingPolicyDossier} onClick={() => {
+                    if (!policyDossier) return
+                    const columns = ['application_number', 'dossier_as_of', 'audit_chain_valid', 'first_invalid_sequence', 'sequence', 'occurred_at', 'event_type', 'from_status', 'to_status', 'actor_user_id', 'reason', 'previous_hash', 'event_hash']
+                    const escapeCsv = (value: unknown) => {
+                      const text = value == null ? '' : String(value)
+                      return `"${text.replace(/"/g, '""')}"`
+                    }
+                    const rows = policyDossier.audit.events.map(event => [
+                      policyDossier.application.application_number,
+                      policyDossier.as_of,
+                      policyDossier.audit.valid,
+                      policyDossier.audit.first_invalid_sequence,
+                      event.sequence,
+                      event.occurred_at,
+                      event.event_type,
+                      event.from_status,
+                      event.to_status,
+                      event.actor_user_id,
+                      event.reason,
+                      event.previous_hash,
+                      event.event_hash,
+                    ])
+                    const csv = [columns, ...rows].map(row => row.map(escapeCsv).join(',')).join('\r\n')
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+                    const url = URL.createObjectURL(blob)
+                    const link = document.createElement('a')
+                    link.href = url
+                    link.download = `pravaah-audit-${policyDossier.application.application_number.replace(/[^a-zA-Z0-9_-]/g, '-')}.csv`
+                    document.body.appendChild(link)
+                    link.click()
+                    link.remove()
+                    URL.revokeObjectURL(url)
+                  }}>Export audit CSV</button>
+                  <button type="button" className="secondary-button small-button" disabled={loadingPolicyDossier} onClick={() => {
+                    setLoadingPolicyDossier(true)
+                    setPolicyDossierError('')
+                    void api.policyToProof(selectedApplication.id).then(setPolicyDossier).catch(error => setPolicyDossierError(error instanceof Error ? error.message : 'Could not refresh the dossier.')).finally(() => setLoadingPolicyDossier(false))
+                  }}>{loadingPolicyDossier ? 'Loading…' : 'Refresh dossier'}</button>
+                </div>            </div>
+              {loadingPolicyDossier && !policyDossier ? <div className="table-state"><div className="loading-line"/><span>Assembling traceability records…</span></div>
+                : policyDossierError ? <div className="policy-dossier-error" role="alert"><strong>Dossier unavailable</strong><p>{policyDossierError}</p><button type="button" className="secondary-button small-button" onClick={() => {
+                  setLoadingPolicyDossier(true)
+                  setPolicyDossierError('')
+                  void api.policyToProof(selectedApplication.id).then(setPolicyDossier).catch(error => setPolicyDossierError(error instanceof Error ? error.message : 'Could not load the dossier.')).finally(() => setLoadingPolicyDossier(false))
+                }}>Try again</button></div>
+                : policyDossier ? <>
+                  <div className="policy-dossier-summary">
+                    <div className={'policy-dossier-audit ' + (policyDossier.audit.valid ? 'valid' : 'invalid')}><ShieldCheck size={18}/><div><strong>{policyDossier.audit.valid ? 'Audit chain verified' : 'Audit chain check failed'}</strong><span>{policyDossier.audit.event_count} event(s) checked</span></div></div>
+                    <div className="policy-dossier-count"><span>Policies</span><strong>{policyDossier.counts.policy_versions}</strong></div>
+                    <div className="policy-dossier-count"><span>Evidence</span><strong>{policyDossier.counts.evidence}</strong></div>
+                    <div className="policy-dossier-count"><span>Attachments</span><strong>{policyDossier.counts.attachments}</strong></div>
+                    <div className="policy-dossier-count"><span>Undertakings</span><strong>{policyDossier.counts.compliance_submissions}</strong></div>
+                    <div className="policy-dossier-count"><span>EVC visits</span><strong>{policyDossier.counts.evc_visits}</strong></div>
+                    <div className="policy-dossier-count"><span>Notifications</span><strong>{policyDossier.counts.notifications}</strong></div>
+                    <div className="policy-dossier-count"><span>Escalations</span><strong>{policyDossier.counts.escalations}</strong></div>
+                  </div>
+                  <div className="policy-dossier-sections">
+                    <details><summary>Policy-to-evidence links <span>{policyDossier.policy_evidence_links.filter(item => item.matched).length}/{policyDossier.policy_evidence_links.length} matched</span></summary>
+                      {policyDossier.policy_evidence_links.length ? policyDossier.policy_evidence_links.map(item => <article className="policy-dossier-record" key={item.evidence_id}><strong>{item.evidence_title}</strong><span>{item.policy_key || 'No policy key recorded'} · {item.matched ? 'Policy version linked' : 'Unresolved policy reference'}</span>{item.policy_versions.length ? item.policy_versions.map(policy => <small key={policy.id}>{policy.title} · v{policy.version} · {policy.source_label}{policy.is_active ? ' · Active' : ' · Inactive'}</small>) : <p>No policy version matches this evidence record's policy key. Review and resolve the reference before relying on it.</p>}</article>) : <p className="policy-dossier-empty">No evidence records are available to map to policy versions.</p>}
+                    </details>
+                    <details open><summary>Policy provenance <span>{policyDossier.policy_versions.length}</span></summary>
+                      {policyDossier.policy_versions.length ? policyDossier.policy_versions.map(item => <article className="policy-dossier-record" key={item.id}><strong>{item.title} · v{item.version}</strong><span>{item.policy_key} · {item.source_label}</span><p>{item.description}</p><small>Effective {formatDate(item.effective_from)} · {item.is_active ? 'Active' : 'Inactive'}</small></article>) : <p className="policy-dossier-empty">No policy version is linked through evidence or event metadata.</p>}
+                    </details>
+                    <details><summary>Evidence & file integrity <span>{policyDossier.evidence.length}</span></summary>
+                      {policyDossier.evidence.length ? policyDossier.evidence.map(item => <article className="policy-dossier-record" key={item.id}><strong>{item.title} · v{item.version}</strong><span>{item.category.replaceAll('_', ' ')} · {item.lifecycle_status}{item.policy_key ? ' · ' + item.policy_key : ''}</span><small>{item.expires_on ? 'Expires ' + formatDate(item.expires_on) : 'No expiry date'}{item.reference_number ? ' · Ref ' + item.reference_number : ''}</small><p>{policyDossier.attachments.filter(file => file.evidence_id === item.id).map(file => file.filename + ' · SHA-256 ' + file.sha256.slice(0, 16) + '…').join(' | ') || 'No attached files recorded'}</p></article>) : <p className="policy-dossier-empty">No evidence records are linked to this application.</p>}
+                    </details>
+                    <details><summary>Compliance submissions <span>{policyDossier.compliance_submissions.length}</span></summary>
+                      {policyDossier.compliance_submissions.length ? policyDossier.compliance_submissions.map(item => <article className="policy-dossier-record" key={item.id}><strong>{item.title} · v{item.version}</strong><span>{item.submission_type.replaceAll('_', ' ')} · {formatStatus(item.status)} · {item.evidence_ids.length} evidence item(s)</span><small>{item.submitted_at ? 'Submitted ' + formatDate(item.submitted_at) : 'Not submitted'}{item.reviewed_at ? ' · Reviewed ' + formatDate(item.reviewed_at) : ''}</small>{item.review_notes && <p>Reviewer note: {item.review_notes}</p>}</article>) : <p className="policy-dossier-empty">No compliance submissions are recorded.</p>}
+                    </details>
+                    <details><summary>EVC visits & reports <span>{policyDossier.evc_visits.length}</span></summary>
+                      {policyDossier.evc_visits.length ? policyDossier.evc_visits.map(item => <article className="policy-dossier-record" key={item.id}><strong>{formatDate(item.scheduled_for)} · {formatStatus(item.status)}</strong><span>{formatStatus(item.mode)} · report {formatStatus(item.report_status)} · {item.linked_evidence_ids.length} evidence item(s)</span>{item.outcome_summary && <p>{item.outcome_summary}</p>}{item.observations && <p>{item.observations}</p>}</article>) : <p className="policy-dossier-empty">No EVC visits are recorded.</p>}
+                    </details>
+                    <details><summary>Notifications & escalations <span>{policyDossier.notifications.length + policyDossier.escalations.length}</span></summary>
+                      {policyDossier.notifications.map(item => <article className="policy-dossier-record" key={item.id}><strong>{item.title}</strong><span>Notification · {formatStatus(item.delivery_status)} · {item.attempt_count}/{item.max_attempts} attempts</span><small>{formatDate(item.created_at)}{item.sent_at ? ' · Sent ' + formatDate(item.sent_at) : ''}</small>{item.last_error && <p>{item.last_error}</p>}</article>)}
+                      {policyDossier.escalations.map(item => <article className="policy-dossier-record" key={item.id}><strong>{item.summary}</strong><span>Escalation · {formatStatus(item.severity)} · {formatStatus(item.status)}</span><small>Raised {formatDate(item.triggered_at)}{item.resolved_at ? ' · Resolved ' + formatDate(item.resolved_at) : ''}</small></article>)}
+                      {!policyDossier.notifications.length && !policyDossier.escalations.length && <p className="policy-dossier-empty">No notification or escalation records are linked.</p>}
+                    </details>
+                    <details><summary>Audit event history <span>{policyDossier.audit.events.length}</span></summary>
+                      {policyDossier.audit.events.length ? policyDossier.audit.events.map(item => <article className="policy-dossier-record" key={item.id}><strong>#{item.sequence} · {item.event_type.replaceAll('_', ' ')}</strong><span>{item.from_status ? formatStatus(item.from_status) + ' → ' + formatStatus(item.to_status || '') : 'Initial or non-status event'}{item.reason ? ' · ' + item.reason : ''}</span><small>{new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.occurred_at))}</small><code>{item.event_hash}</code></article>) : <p className="policy-dossier-empty">No audit events are recorded.</p>}
+                    </details>
+                  </div>
+                  <p className="policy-dossier-disclaimer">{policyDossier.disclaimer}</p>
+                </> : <p className="policy-dossier-empty">The traceability dossier has not been loaded.</p>}
+            </section>
             {(() => {
               const actionMap: Record<string, { roles: string[]; targets: string[] }> = {
                 draft: { roles: ['institution_user'], targets: ['submitted'] },

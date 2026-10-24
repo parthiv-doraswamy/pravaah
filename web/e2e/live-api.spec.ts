@@ -26,18 +26,18 @@ test('live API persists a draft, evidence metadata, and audit history across rel
 
   await page.getByLabel('Evidence title').fill(evidenceTitle)
   await page.getByRole('button', { name: 'Register evidence' }).click()
-  await expect(page.getByText(evidenceTitle).first()).toBeVisible()
-  await expect(page.getByText('Audit chain verified')).toBeVisible()
+  await expect(page.getByText(evidenceTitle).last()).toBeVisible()
+  await expect(page.getByText('Audit chain verified').first()).toBeVisible()
 
   // A second reload verifies the evidence row and its audit event were persisted.
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Good to see you, Demo.' })).toBeVisible()
   await page.getByText(title).first().click()
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
-  await expect(page.getByText(evidenceTitle).first()).toBeVisible()
-  await expect(page.getByText('Audit chain verified')).toBeVisible()
+  await expect(page.getByText(evidenceTitle).last()).toBeVisible()
+  await expect(page.getByText('Audit chain verified').first()).toBeVisible()
   await expect(page.getByText(/\d+ events checked\. No tampering detected in the stored chain\./)).toBeVisible()
-  await expect(page.getByText('evidence registered', { exact: false }).first()).toBeVisible()
+  await expect(page.getByText('evidence registered', { exact: false }).last()).toBeVisible()
 
   // The institution can submit its own draft, but the final decision is reserved for authority roles.
   await page.getByRole('button', { name: 'Submitted', exact: true }).click()

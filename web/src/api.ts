@@ -281,6 +281,22 @@ export type EVCVisit = {
   updated_at: string
 }
 
+export type PolicyToProofDossier = {
+  as_of: string
+  disclaimer: string
+  application: Pick<Application, 'id' | 'application_number' | 'title' | 'status' | 'institution_id' | 'created_at' | 'updated_at'>
+  policy_versions: { id: string; policy_key: string; version: number; title: string; description: string; effective_from: string; rules_schema_version: number; source_label: string; is_active: boolean }[]
+  policy_evidence_links: { evidence_id: string; evidence_title: string; policy_key: string | null; matched: boolean; policy_versions: { id: string; version: number; title: string; source_label: string; is_active: boolean }[] }[]
+  evidence: { id: string; title: string; category: string; reference_number: string | null; version: number; supersedes_evidence_id: string | null; lifecycle_status: string; issued_on: string | null; expires_on: string | null; policy_key: string | null; notes: string | null; created_at: string }[]
+  attachments: { id: string; evidence_id: string; filename: string; content_type: string; size_bytes: number; sha256: string; created_at: string }[]
+  compliance_submissions: { id: string; submission_type: string; title: string; status: string; version: number; evidence_ids: string[]; supersedes_submission_id: string | null; submitted_at: string | null; reviewed_at: string | null; review_notes: string | null }[]
+  evc_visits: { id: string; scheduled_for: string; mode: string; location: string | null; status: string; report_status: string; report_submitted_at: string | null; linked_evidence_ids: string[]; outcome_summary: string | null; observations: string | null }[]
+  notifications: { id: string; notification_type: string; title: string; severity: string; delivery_status: string; attempt_count: number; max_attempts: number; last_error: string | null; created_at: string; sent_at: string | null }[]
+  escalations: { id: string; evidence_id: string; type: string; status: string; severity: string; summary: string; triggered_at: string; resolved_at: string | null }[]
+  audit: { event_count: number; valid: boolean; first_invalid_sequence: number | null; events: { id: string; sequence: number; event_type: string; from_status: string | null; to_status: string | null; actor_user_id: string | null; reason: string | null; metadata: Record<string, unknown>; occurred_at: string; previous_hash: string; event_hash: string }[] }
+  counts: { policy_versions: number; evidence: number; attachments: number; compliance_submissions: number; evc_visits: number; notifications: number; escalations: number }
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '')
 const TOKEN_KEY = 'pravaah_access_token'
 
@@ -330,6 +346,7 @@ export const api = {
   }),
   applicationEvents: (id: string) => request<ApplicationEvent[]>(`/applications/${encodeURIComponent(id)}/events`),
   verifyEvents: (id: string) => request<EventVerification>(`/applications/${encodeURIComponent(id)}/events/verify`),
+  policyToProof: (id: string) => request<PolicyToProofDossier>(`/applications/${encodeURIComponent(id)}/policy-to-proof`),
   policies: () => request<PolicyVersion[]>('/applications/policies/registry'),
   complianceOverview: () => request<ComplianceOverview>('/compliance/overview'),
   operationsMetrics: () => request<OperationsMetrics>('/operations/metrics'),

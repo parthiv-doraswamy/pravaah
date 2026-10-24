@@ -248,6 +248,40 @@ test('institution can register evidence and verify the application audit timelin
       await route.fulfill({ status: 201, json: created })
       return
     }
+    if (path === `/applications/${appId}/policy-to-proof`) {
+      await route.fulfill({ json: {
+        as_of: '2026-10-23T10:00:00Z',
+        disclaimer: 'Traceability dossier for human review. Policy records may be synthetic demo assumptions and are not official AICTE rules or a statutory decision.',
+        application: {
+          id: appId, application_number: application.application_number, title: application.title,
+          status: application.status, institution_id: application.institution_id,
+          created_at: application.created_at, updated_at: application.updated_at,
+        },
+        policy_versions: [{
+          id: '70000000-0000-4000-8000-000000000001', policy_key: 'EVIDENCE_EXPIRY', version: 1,
+          title: 'Evidence expiry demo policy', description: 'Synthetic traceability policy.',
+          effective_from: '2026-01-01T00:00:00Z', rules_schema_version: 1,
+          source_label: 'Synthetic test policy', is_active: true,
+        }],
+        policy_evidence_links: [{
+          evidence_id: '71000000-0000-4000-8000-000000000001',
+          evidence_title: 'Fire safety certificate',
+          policy_key: 'EVIDENCE_EXPIRY',
+          matched: true,
+          policy_versions: [{
+            id: '70000000-0000-4000-8000-000000000001',
+            version: 1,
+            title: 'Evidence expiry demo policy',
+            source_label: 'Synthetic test policy',
+            is_active: true,
+          }],
+        }],
+        evidence: [], attachments: [], compliance_submissions: [], evc_visits: [], notifications: [], escalations: [],
+        audit: { event_count: 0, valid: true, first_invalid_sequence: null, events: [] },
+        counts: { policy_versions: 1, evidence: 0, attachments: 0, compliance_submissions: 0, evc_visits: 0, notifications: 0, escalations: 0 },
+      } })
+      return
+    }
     if (path === `/applications/${appId}/events`) {
       await route.fulfill({ json: events })
       return
@@ -300,11 +334,23 @@ test('institution can register evidence and verify the application audit timelin
   await page.getByRole('button', { name: 'Open PVH-E2E-0001' }).click()
 
   await expect(page.getByRole('heading', { name: 'Existing demo application' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Policy-to-Proof dossier' })).toBeVisible()
+  await expect(page.getByText('Evidence expiry demo policy · v1')).toBeVisible()
+  await expect(page.getByText('Policy version linked')).toBeVisible()
+  await expect(page.getByText('Traceability dossier for human review.', { exact: false })).toBeVisible()
+  const dossierDownloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export JSON' }).click()
+  const dossierDownload = await dossierDownloadPromise
+  expect(dossierDownload.suggestedFilename()).toBe('pravaah-policy-to-proof-PVH-E2E-0001.json')
+  const auditDownloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export audit CSV' }).click()
+  const auditDownload = await auditDownloadPromise
+  expect(auditDownload.suggestedFilename()).toBe('pravaah-audit-PVH-E2E-0001.csv')
   await page.getByLabel('Evidence title').fill('Fire safety certificate')
   await page.getByRole('button', { name: 'Register evidence' }).click()
 
   await expect(page.getByText('Fire safety certificate').first()).toBeVisible()
-  await expect(page.getByText('Audit chain verified')).toBeVisible()
+  await expect(page.getByText('Audit chain verified').first()).toBeVisible()
   await expect(page.getByText('evidence registered')).toBeVisible()
   await expect(page.getByText('1 events checked. No tampering detected in the stored chain.')).toBeVisible()
   expect(evidence).toHaveLength(1)
