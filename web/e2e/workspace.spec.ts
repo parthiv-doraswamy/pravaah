@@ -328,7 +328,7 @@ test('institution can register evidence and verify the application audit timelin
   await page.getByRole('button', { name: 'Register evidence' }).click()
 
   await expect(page.getByText('Fire safety certificate').first()).toBeVisible()
-  await expect(page.getByText('Audit chain verified')).toBeVisible()
+  await expect(page.getByText('Audit chain verified').first()).toBeVisible()
   await expect(page.getByText('evidence registered')).toBeVisible()
   await expect(page.getByText('1 events checked. No tampering detected in the stored chain.')).toBeVisible()
   expect(evidence).toHaveLength(1)
