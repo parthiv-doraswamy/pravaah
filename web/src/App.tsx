@@ -991,11 +991,25 @@ function App() {
             <section className="policy-dossier" aria-labelledby="policy-dossier-heading">
               <div className="policy-dossier-heading">
                 <div><div className="eyebrow">TRACEABILITY & EVIDENCE</div><h2 id="policy-dossier-heading">Policy-to-Proof dossier</h2><p>Connect policy versions, evidence, review activity and the audit chain.</p></div>
-                <button type="button" className="secondary-button small-button" disabled={loadingPolicyDossier} onClick={() => {
-                  setLoadingPolicyDossier(true)
-                  setPolicyDossierError('')
-                  void api.policyToProof(selectedApplication.id).then(setPolicyDossier).catch(error => setPolicyDossierError(error instanceof Error ? error.message : 'Could not refresh the dossier.')).finally(() => setLoadingPolicyDossier(false))
-                }}>{loadingPolicyDossier ? 'Loading…' : 'Refresh dossier'}</button>
+                <div className="policy-dossier-actions">
+                  <button type="button" className="secondary-button small-button" disabled={!policyDossier || loadingPolicyDossier} onClick={() => {
+                    if (!policyDossier) return
+                    const blob = new Blob([JSON.stringify(policyDossier, null, 2)], { type: 'application/json;charset=utf-8' })
+                    const url = URL.createObjectURL(blob)
+                    const link = document.createElement('a')
+                    link.href = url
+                    link.download = `pravaah-policy-to-proof-${policyDossier.application.application_number.replace(/[^a-zA-Z0-9_-]/g, '-')}.json`
+                    document.body.appendChild(link)
+                    link.click()
+                    link.remove()
+                    URL.revokeObjectURL(url)
+                  }}>Export JSON</button>
+                  <button type="button" className="secondary-button small-button" disabled={loadingPolicyDossier} onClick={() => {
+                    setLoadingPolicyDossier(true)
+                    setPolicyDossierError('')
+                    void api.policyToProof(selectedApplication.id).then(setPolicyDossier).catch(error => setPolicyDossierError(error instanceof Error ? error.message : 'Could not refresh the dossier.')).finally(() => setLoadingPolicyDossier(false))
+                  }}>{loadingPolicyDossier ? 'Loading…' : 'Refresh dossier'}</button>
+                </div>
               </div>
               {loadingPolicyDossier && !policyDossier ? <div className="table-state"><div className="loading-line"/><span>Assembling traceability records…</span></div>
                 : policyDossierError ? <div className="policy-dossier-error" role="alert"><strong>Dossier unavailable</strong><p>{policyDossierError}</p><button type="button" className="secondary-button small-button" onClick={() => {
