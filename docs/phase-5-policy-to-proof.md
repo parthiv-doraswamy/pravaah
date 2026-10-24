@@ -48,3 +48,14 @@ The displayed audit status is limited to the server's hash-chain check. A valid 
 
 The prior backend test, lint, frontend build, PostgreSQL smoke, SMTP smoke, Compose configuration, and Compose reliability jobs passed. The prior frontend end-to-end job failed only on strict-mode locator ambiguity for the duplicated audit status text; the updated assertions address that observed failure. The updated branch's CI run remains the source of truth for the fixes.
 
+## Chunk 4: Portable dossier export
+
+### Delivered
+
+- Added an **Export JSON** action to the Policy-to-Proof panel, alongside refresh.
+- Exports the dossier currently shown on screen, including its as-of timestamp, counts, policy provenance, evidence and attachment checksums, review records, notification/escalation state, and audit verification result.
+- The download filename is derived from the application number after removing unsafe filename characters. The export uses the API's existing response, so it does not make an additional request or bypass application-scope authorization.
+- Added browser end-to-end coverage for the JSON download and expected filename, with responsive action styling.
+
+The export is a point-in-time copy of the dossier response. It does not include attachment bytes or private storage keys, and it does not convert a hash-chain result into an official certification.
+
