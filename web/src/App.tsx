@@ -1061,6 +1061,9 @@ function App() {
                     <div className="policy-dossier-count"><span>Escalations</span><strong>{policyDossier.counts.escalations}</strong></div>
                   </div>
                   <div className="policy-dossier-sections">
+                    <details><summary>Policy-to-evidence links <span>{policyDossier.policy_evidence_links.filter(item => item.matched).length}/{policyDossier.policy_evidence_links.length} matched</span></summary>
+                      {policyDossier.policy_evidence_links.length ? policyDossier.policy_evidence_links.map(item => <article className="policy-dossier-record" key={item.evidence_id}><strong>{item.evidence_title}</strong><span>{item.policy_key || 'No policy key recorded'} · {item.matched ? 'Policy version linked' : 'Unresolved policy reference'}</span>{item.policy_versions.length ? item.policy_versions.map(policy => <small key={policy.id}>{policy.title} · v{policy.version} · {policy.source_label}{policy.is_active ? ' · Active' : ' · Inactive'}</small>) : <p>No policy version matches this evidence record's policy key. Review and resolve the reference before relying on it.</p>}</article>) : <p className="policy-dossier-empty">No evidence records are available to map to policy versions.</p>}
+                    </details>
                     <details open><summary>Policy provenance <span>{policyDossier.policy_versions.length}</span></summary>
                       {policyDossier.policy_versions.length ? policyDossier.policy_versions.map(item => <article className="policy-dossier-record" key={item.id}><strong>{item.title} · v{item.version}</strong><span>{item.policy_key} · {item.source_label}</span><p>{item.description}</p><small>Effective {formatDate(item.effective_from)} · {item.is_active ? 'Active' : 'Inactive'}</small></article>) : <p className="policy-dossier-empty">No policy version is linked through evidence or event metadata.</p>}
                     </details>
