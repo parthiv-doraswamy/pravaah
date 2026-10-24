@@ -37,7 +37,7 @@ test('live API persists a draft, evidence metadata, and audit history across rel
   await expect(page.getByText(evidenceTitle).last()).toBeVisible()
   await expect(page.getByText('Audit chain verified').first()).toBeVisible()
   await expect(page.getByText(/\d+ events checked\. No tampering detected in the stored chain\./)).toBeVisible()
-  await expect(page.getByText('evidence registered', { exact: false }).first()).toBeVisible()
+  await expect(page.getByText('evidence registered', { exact: false }).last()).toBeVisible()
 
   // The institution can submit its own draft, but the final decision is reserved for authority roles.
   await page.getByRole('button', { name: 'Submitted', exact: true }).click()
